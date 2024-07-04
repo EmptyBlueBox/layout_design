@@ -1,0 +1,8 @@
+.DS_Store
+dataset
+__pycache__
+*.pkl
+*.blend
+*.blend1
+test*.py
+json2pkl.py
