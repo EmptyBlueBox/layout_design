@@ -24,6 +24,8 @@ def setup_device():
     return device
 
 
+TRUMANS_PATH = '/Users/emptyblue/Documents/Research/layout_design/dataset/TRUMANS'
+
 device = setup_device()
 max_frame_num = 3  # 实际的帧数
 frames_per_second = 1  # fps
@@ -223,9 +225,24 @@ def write_rerun(human: list, object: list):
 
 
 def main():
-    human = load_human()  # 和 human_list 一一对应
-    object = load_object()  # 和 object_list 一一对应
-    write_rerun(human, object)
+    # object_list = np.load(TRUMANS_PATH+'/object_list.npy')
+    # print(object_list)
+    # object_flag = np.load(TRUMANS_PATH+'/object_flag.npy')
+    # print(object_flag[:2])
+    # object_mat = np.load(TRUMANS_PATH+'/object_mat.npy')
+    # print(object_mat[0])
+    seg_name = np.load(TRUMANS_PATH+'/seg_name.npy')
+    print(seg_name[:10])
+    # 计算有多少个不同的seg_name
+    seg_num = set(seg_name)
+    print(len(seg_num))
+
+    frame_id = np.load(TRUMANS_PATH+'/frame_id.npy')
+    print(frame_id[:10])
+
+    # human = load_human()  # 和 human_list 一一对应
+    # object = load_object()  # 和 object_list 一一对应
+    # write_rerun(human, object)
 
 
 if __name__ == '__main__':

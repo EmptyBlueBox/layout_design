@@ -24,13 +24,23 @@ def setup_device():
 
 
 device = setup_device()
-max_frame_num = 50  # 实际的帧数
-frames_per_second = 0.5  # fps
-selected_frame_num = np.linspace(0, int(max_frame_num/frames_per_second*120), max_frame_num, dtype=int)
 
-human_list = [2, 3]  # ID
-object_list = ['bigsofa', 'smallsofa']
-# object_list = ['bigsofa']
+dataset_root = '../dataset/HOI-M3/livingroom_data08'
+human_list = [0, 1, 2, 3]  # 8
+# human_list = [0, 1]  # 9
+# human_list = [0, 1]  # 10
+# human_list = [0, 1]  # 21
+object_list = ['bigsofa', 'smallsofa', 'cuptable', 'yellowchair']  # 8
+# object_list = ['bigsofa', 'smallsofa', 'bookshelf']  # 9
+# object_list = ['bigsofa', 'smallsofa']  # 10
+# object_list = ['bigsofa', 'smallsofa', 'purpledumbbell']  # 21
+
+max_frame_num = 330  # 实际的帧数 8
+# max_frame_num = 230  # 实际的帧数 9
+# max_frame_num = 350  # 实际的帧数 10
+# max_frame_num = 340  # 实际的帧数 21
+frames_per_second = 2  # fps
+selected_frame_num = np.linspace(0, int(max_frame_num/frames_per_second*120), max_frame_num, dtype=int)
 
 
 def normalize(v):
@@ -82,7 +92,7 @@ def compute_vertex_normals(vertices, faces):
 
 def load_human_mesh(id=0):
     body_model = SMPLModel(device=device, model_path='/Users/emptyblue/Documents/Research/HUMAN_MODELS/smpl/processed_SMPL/SMPL_MALE.pkl')
-    data_root = '../dataset/HOI-M3/livingroom_data05/smpl'
+    data_root = os.path.join(dataset_root, 'smpl')
     data_list = os.listdir(data_root)
     data_list.sort()
     smpl_params = {
@@ -129,7 +139,7 @@ def load_human_mesh(id=0):
 
 
 def load_object_params(object_name):
-    data_root = f'../dataset/HOI-M3/livingroom_data05/object/{object_name}/json'
+    data_root = os.path.join(dataset_root, 'object', object_name, 'json')
     data_list = os.listdir(data_root)
     data_list.sort()
 
@@ -190,7 +200,7 @@ def write_rerun(human: list, object: list):
     parser = argparse.ArgumentParser(description="Logs rich data using the Rerun SDK.")
     rr.script_add_args(parser)
     args = parser.parse_args()
-    rr.script_setup(args, "rerun_example_dna_abacus")
+    rr.script_setup(args, dataset_root.split('/')[-1])
     rr.set_time_seconds("stable_time", 0)
 
     for i in range(max_frame_num):
