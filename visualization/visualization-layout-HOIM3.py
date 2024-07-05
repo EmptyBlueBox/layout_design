@@ -24,11 +24,11 @@ def setup_device():
 
 
 device = setup_device()
-max_frame_num = 2  # 实际的帧数
-frames_per_second = 1  # fps
+max_frame_num = 50  # 实际的帧数
+frames_per_second = 0.5  # fps
 selected_frame_num = np.linspace(0, int(max_frame_num/frames_per_second*120), max_frame_num, dtype=int)
 
-human_list = [0, 1, 2, 3]  # ID
+human_list = [2, 3]  # ID
 object_list = ['bigsofa', 'smallsofa']
 # object_list = ['bigsofa']
 
@@ -81,8 +81,8 @@ def compute_vertex_normals(vertices, faces):
 
 
 def load_human_mesh(id=0):
-    body_model = SMPLModel(device=device, model_path='./preprocessed_SMPL/SMPL_MALE.pkl')
-    data_root = '../dataset/livingroom_data05/smpl'
+    body_model = SMPLModel(device=device, model_path='/Users/emptyblue/Documents/Research/HUMAN_MODELS/smpl/processed_SMPL/SMPL_MALE.pkl')
+    data_root = '../dataset/HOI-M3/livingroom_data05/smpl'
     data_list = os.listdir(data_root)
     data_list.sort()
     smpl_params = {
@@ -113,12 +113,7 @@ def load_human_mesh(id=0):
     vertices = vertices.detach().cpu().numpy()
     faces = body_model.faces  # (13776, 3)
 
-    # 检查 faces 中的索引是否超出 vertices 的范围
-    max_vertex_index = vertices.shape[1] - 1
-    if np.max(faces) > max_vertex_index:
-        raise ValueError(f"faces contains invalid indices: max index {np.max(faces)} exceeds vertices shape {max_vertex_index + 1}")
-
-    # 将顶点和面信息转换为trimesh对象
+    # 计算顶点法向量
     vertex_normals = np.zeros_like(vertices)
     for i in range(vertices.shape[0]):
         vertex_normals[i] = compute_vertex_normals(vertices[i], faces)
@@ -134,7 +129,7 @@ def load_human_mesh(id=0):
 
 
 def load_object_params(object_name):
-    data_root = f'../dataset/livingroom_data05/object/{object_name}/json'
+    data_root = f'../dataset/HOI-M3/livingroom_data05/object/{object_name}/json'
     data_list = os.listdir(data_root)
     data_list.sort()
 
@@ -220,7 +215,7 @@ def write_rerun(human: list, object: list):
                 rotation=Quaternion(xyzw=R.from_matrix(object[j]['orientation'][i]).as_quat()),
                 translation=object[j]['translation'][i]
             )
-            object_obj = f'../dataset/object_obj/{object_list[j]}/{object_list[j]}_face1000.obj'
+            object_obj = f'../dataset/HOI-M3/scanned_object/{object_list[j]}/{object_list[j]}_simplified_transformed.obj'
             rr.log(f'object/{object_list[j]}', rr_transform)
             rr.log(f'object/{object_list[j]}', rr.Asset3D(path=object_obj))
 
