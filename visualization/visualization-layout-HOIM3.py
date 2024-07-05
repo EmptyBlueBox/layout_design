@@ -166,9 +166,6 @@ def load_object_params(object_name):
 
     # 错误保存为转置, 要改正
     object_params['orientation'] = object_params['orientation'].transpose(0, 2, 1)
-    # for i in range(object_params['orientation'].shape[0]):
-    #     print(i, object_params['translation'][i])
-    #     print(i, R.from_matrix(object_params['orientation'][i]).as_quat())
 
     return object_params
 
