@@ -12,6 +12,7 @@ import rerun as rr
 import trimesh
 import numpy
 import utils.rotation_utils as ru
+import pickle
 
 
 def setup_device():
@@ -27,14 +28,21 @@ def setup_device():
 TRUMANS_PATH = '/Users/emptyblue/Documents/Research/layout_design/dataset/TRUMANS'
 
 device = setup_device()
-max_frame_num = 3  # 实际的帧数
-frames_per_second = 1  # fps
-selected_frame_num = np.linspace(0, int(max_frame_num/frames_per_second*120), max_frame_num, dtype=int)
 
-human_list = [0, 1, 2, 3]  # ID
-# object_list = ['bigsofa', 'smallsofa']
-# object_list = ['bigsofa']
-object_list = []
+seg_num = 0  # 可视化哪个seg
+
+seg_begin_list = np.load(TRUMANS_PATH+'/seg_begin.npy')
+seg_begin = seg_begin_list[seg_num]
+seg_end = seg_begin_list[seg_num+1] if seg_num+1 < seg_begin_list.shape[0] else len(seg_begin_list)
+
+seg_name_list = np.load(TRUMANS_PATH+'/seg_name.npy')
+seg_name = seg_name_list[seg_begin]
+
+object_list = np.load(TRUMANS_PATH+'/object_list.npy')
+
+max_frame_num = 2  # 实际的帧数
+selected_frame_num = np.linspace(seg_begin, seg_end-1, max_frame_num, dtype=int)
+frames_per_second = 20
 
 
 def compute_vertex_normals(vertices, faces):
@@ -63,6 +71,7 @@ def compute_vertex_normals(vertices, faces):
 
 
 def load_human_mesh(id=0):
+
     human_model = smplx.create('/Users/emptyblue/Documents/Research/HUMAN_MODELS',
                                model_type='smplx',
                                gender='neutral',
@@ -72,44 +81,22 @@ def load_human_mesh(id=0):
                                ext='npz',
                                batch_size=max_frame_num)
 
-    data_root = '../dataset/livingroom_data05/smpl'
-    data_list = os.listdir(data_root)
-    data_list.sort()
     smpl_params = {
-        'shapes': [],
-        'poses': [],
-        'orientation': [],
-        'translation': [],
-        'id': id,
+        'poses': np.load(TRUMANS_PATH+'/human_pose.npy')[selected_frame_num],  # (max_frame_num, 63)
+        'orientation': np.load(TRUMANS_PATH+'/human_orient.npy')[selected_frame_num],  # (max_frame_num, 3)
+        'translation': np.load(TRUMANS_PATH+'/human_transl.npy')[selected_frame_num],  # (max_frame_num, 3)
     }
 
-    for name in data_list:
-        if name.endswith('.json'):
-            name_int = int(name.split('.')[0])
-            if name_int not in selected_frame_num:
-                continue
-            with open(os.path.join(data_root, name), 'r') as f:
-                data = json.load(f)[id]
-            smpl_params['shapes'].append(data['shapes'])
-            smpl_params['poses'].append(data['poses'])
-            smpl_params['orientation'].append(data['Rh'])
-            smpl_params['translation'].append(data['Th'])
-    smpl_params = {key: np.array(value) if isinstance(value, list) else value for key, value in smpl_params.items()}
-
     # 后续处理
-    smpl_params['shapes'] = torch.tensor(smpl_params['shapes'].reshape(-1, 10), dtype=torch.float32)
-    smpl_params['poses'] = torch.tensor(smpl_params['poses'].reshape(-1, 23, 3)[:, :-2], dtype=torch.float32)
+    smpl_params['poses'] = torch.tensor(smpl_params['poses'].reshape(-1, 21, 3), dtype=torch.float32)
     smpl_params['orientation'] = torch.tensor(smpl_params['orientation'].reshape(-1, 3), dtype=torch.float32)
     smpl_params['translation'] = torch.tensor(smpl_params['translation'].reshape(-1, 3), dtype=torch.float32)
 
-    print(f'smpl_params.type:{smpl_params["shapes"].dtype}')
-    print(f'smpl_params.shape:{smpl_params["shapes"].shape}')
     print(f'smpl_params.pose:{smpl_params["poses"].shape}')
     print(f'smpl_params.orientation:{smpl_params["orientation"].shape}')
     print(f'smpl_params.translation:{smpl_params["translation"].shape}')
 
-    output = human_model(betas=smpl_params['shapes'],
-                         body_pose=smpl_params['poses'],
+    output = human_model(body_pose=smpl_params['poses'],
                          global_orient=smpl_params['orientation'],
                          transl=smpl_params['translation'])
     vertices = output.vertices.detach().cpu().numpy()
@@ -130,119 +117,73 @@ def load_human_mesh(id=0):
     return human_mesh
 
 
-def load_object_params(object_name):
-    data_root = f'../dataset/livingroom_data05/object/{object_name}/json'
-    data_list = os.listdir(data_root)
-    data_list.sort()
-
-    object_params = {
-        'translation': [],
-        'orientation': [],
-    }
-
-    for name in data_list:
-        if name.endswith('.json'):
-            with open(os.path.join(data_root, name), 'r') as f:
-                data = json.load(f)
-            object_params['translation'].append(data['object_T'])
-            object_params['orientation'].append(data['object_R'])
-        else:
-            data_list.remove(name)
-    object_params = {key: np.array(value) if isinstance(value, list) else value for key, value in object_params.items()}
-
-    object_params['translation'] = object_params['translation'].reshape(-1, 3)
-    object_params['orientation'] = ru.rot6d_to_matrix(object_params['orientation'])    # 从前两列3*2算出3*3的旋转矩阵
-
-    repeat_first_frame_num = int(data_list[0].split('.')[0])
-    if (repeat_first_frame_num != 0):
-        object_params['translation'] = np.concatenate(
-            (np.tile(object_params['translation'][0], (repeat_first_frame_num-1, 1)), object_params['translation']), axis=0)
-        object_params['orientation'] = np.concatenate(
-            (np.tile(object_params['orientation'][0], (repeat_first_frame_num-1, 1, 1)), object_params['orientation']), axis=0)
-
-    object_params['translation'] = object_params['translation'][selected_frame_num]
-    object_params['orientation'] = object_params['orientation'][selected_frame_num]
-
-    print(f'object_params[\'translation\'].shape:{object_params["translation"].shape}')
-    print(f'object_params[\'orientation\'].shape:{object_params["orientation"].shape}')
-
-    # 错误保存为转置, 要改正
-    object_params['orientation'] = object_params['orientation'].transpose(0, 2, 1)
-    # for i in range(object_params['orientation'].shape[0]):
-    #     print(i, object_params['translation'][i])
-    #     print(i, R.from_matrix(object_params['orientation'][i]).as_quat())
-
-    return object_params
-
-
 def load_human():
     human = []
-    for id in human_list:
-        human_mesh = load_human_mesh(id)  # (T, 6890, 3), (13776, 3)
-        human.append(human_mesh)
+    human_mesh = load_human_mesh(id)
+    human.append(human_mesh)
     return human
 
 
 def load_object():
-    object = []
-    for object_name in object_list:
-        object_params = load_object_params(object_name)
-        object.append(object_params)
+    object = numpy.load(TRUMANS_PATH+f'/Object_all/Object_pose/{seg_name}.npy', allow_pickle=True).item()  # 这是一个被{}包起来的字典, 要做一下解包 .item()
+    for key in object.keys():
+        object[key]['rotation'] = np.array(object[key]['rotation'])[selected_frame_num-seg_begin]
+        object[key]['location'] = np.array(object[key]['location'])[selected_frame_num-seg_begin]
     return object
 
 
-def write_rerun(human: list, object: list):
+def load_scene():
+    scene_flag = np.load(TRUMANS_PATH+'/scene_flag.npy')[seg_begin]
+    scene_list = np.load(TRUMANS_PATH+'/scene_list.npy')  # 一个包含所有场景的列表
+    scene_name = scene_list[scene_flag]  # 一个场景的名字
+
+    return scene_name
+
+
+def write_rerun(human: list, object: dict, scene: str):
     parser = argparse.ArgumentParser(description="Logs rich data using the Rerun SDK.")
     rr.script_add_args(parser)
     args = parser.parse_args()
-    rr.script_setup(args, "rerun_example_dna_abacus")
+    rr.script_setup(args, f'TRUMANS seg: {seg_num}')
     rr.set_time_seconds("stable_time", 0)
 
     for i in range(max_frame_num):
         time = i / frames_per_second
         rr.set_time_seconds("stable_time", time)
 
-        for j in range(len(human_list)):
-            rr.log(
-                f'human/human_{j}',
-                rr.Mesh3D(
-                    vertex_positions=human[j]['vertices'][i],
-                    triangle_indices=human[j]['faces'],
-                    vertex_normals=human[j]['vertex_normals'][i],
-                ),
+        rr.log(
+            'human',
+            rr.Mesh3D(
+                vertex_positions=human[0]['vertices'][i],
+                triangle_indices=human[0]['faces'],
+                vertex_normals=human[0]['vertex_normals'][i],
+            ),
+        )
+
+        for key in object.keys():  # 一个frame中遍历所有object:
+            # # 只要名字里有 chair 的
+            # if 'chair' not in key:
+            #     continue
+            rr_transform = rr.Transform3D(
+                rotation=Quaternion(xyzw=R.from_euler('XYZ', object[key]['rotation'][i]).as_quat()),
+                translation=object[key]['location'][i][[0, 1, 2]],
             )
 
-        for j in range(len(object_list)):
-            rr_transform = rr.Transform3D(
-                rotation=Quaternion(xyzw=R.from_matrix(object[j]['orientation'][i]).as_quat()),
-                translation=object[j]['translation'][i]
-            )
-            object_obj = f'../dataset/object_obj/{object_list[j]}/{object_list[j]}_face1000.obj'
-            rr.log(f'object/{object_list[j]}', rr_transform)
-            rr.log(f'object/{object_list[j]}', rr.Asset3D(path=object_obj))
+            object_name = key
+            object_obj = f'../dataset/TRUMANS/Object_all/Object_mesh/{object_name}.obj'
+            rr.log(f'object/{key}', rr_transform)
+            rr.log(f'object/{key}', rr.Asset3D(path=object_obj))
+
+        rr.log('scene', rr.Asset3D(path=f'../dataset/TRUMANS/Scene_mesh/{scene}.obj'))
 
     rr.script_teardown(args)
 
 
 def main():
-    # object_list = np.load(TRUMANS_PATH+'/object_list.npy')
-    # print(object_list)
-    # object_flag = np.load(TRUMANS_PATH+'/object_flag.npy')
-    # print(object_flag[:2])
-    # object_mat = np.load(TRUMANS_PATH+'/object_mat.npy')
-    # print(object_mat[0])
-    seg_name = np.load(TRUMANS_PATH+'/seg_name.npy')
-    print(seg_name[:10])
-    # 计算有多少个不同的seg_name
-    seg_num = set(seg_name)
-    print(len(seg_num))
-
-    frame_id = np.load(TRUMANS_PATH+'/frame_id.npy')
-    print(frame_id[:10])
-
-    # human = load_human()  # 和 human_list 一一对应
-    # object = load_object()  # 和 object_list 一一对应
-    # write_rerun(human, object)
+    human = load_human()
+    object = load_object()
+    scene = load_scene()
+    write_rerun(human, object, scene=scene)
 
 
 if __name__ == '__main__':
