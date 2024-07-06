@@ -156,7 +156,7 @@ def write_rerun(human: dict, object: dict, scene: dict = None):
     rr.script_add_args(parser)
     args = parser.parse_args()
     rr.script_setup(args, f'TRUMANS seg: {seg_num}')
-    rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)  # Set an up-axis = +Y
+    rr.log("", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)  # Set an up-axis = +Y
     rr.set_time_seconds("stable_time", 0)
 
     for i in range(max_frame_num):
