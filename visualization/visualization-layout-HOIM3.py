@@ -1,9 +1,6 @@
-import numpy
-import trimesh
 import rerun as rr
-from rerun.datatypes import Angle, RotationAxisAngle, Quaternion
+from rerun.datatypes import Quaternion
 from scipy.spatial.transform import Rotation as R
-from yacs.config import CfgNode
 import json
 import torch
 import numpy as np
