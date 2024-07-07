@@ -1,18 +1,14 @@
-# 获取当前脚本的目录
-import sys
 import smplx
 import argparse
 import os
 import numpy as np
 import torch
-import json
 from scipy.spatial.transform import Rotation as R
-from rerun.datatypes import Angle, RotationAxisAngle, Quaternion
+from rerun.datatypes import Quaternion
 import rerun as rr
 import trimesh
 import numpy
-import utils.rotation_utils as ru
-import pickle
+from tqdm import tqdm
 
 
 def setup_device():
@@ -29,22 +25,23 @@ TRUMANS_PATH = '/Users/emptyblue/Documents/Research/layout_design/dataset/TRUMAN
 
 device = setup_device()
 
-seg_num = 1  # 可视化哪个seg
+SEG_NUM = 1  # 可视化哪个seg
 
 seg_begin_list = np.load(TRUMANS_PATH+'/seg_begin.npy')
-seg_begin = seg_begin_list[seg_num]
-seg_end = seg_begin_list[seg_num+1] if seg_num+1 < seg_begin_list.shape[0] else len(seg_begin_list)
-seg_frame_num = seg_end - seg_begin
-
-seg_name_list = np.load(TRUMANS_PATH+'/seg_name.npy')
-seg_name = seg_name_list[seg_begin]
+seg_begin = seg_begin_list[SEG_NUM]
+seg_end = seg_begin_list[SEG_NUM+1]-1 if SEG_NUM+1 < seg_begin_list.shape[0] else len(seg_begin_list)-1
+seg_frame_num = seg_end - seg_begin + 1
 
 start_frame_ratio = 0.44  # 选择开始的帧数比例
 end_frame_ratio = 0.5  # 选择停止的帧数比例
-max_frame_num = min(200, int(seg_frame_num*(end_frame_ratio-start_frame_ratio)))  # 实际的帧数
+# start_frame_ratio = 0.  # 选择开始的帧数比例
+# end_frame_ratio = 1.  # 选择停止的帧数比例
+
+FRAME_NUM = 150
+max_frame_num = min(FRAME_NUM, int(seg_frame_num*(end_frame_ratio-start_frame_ratio)))  # 实际的帧数
 print(f'max_frame_num: {max_frame_num}')
 selected_frame = np.linspace(int(start_frame_ratio*seg_end+(1-start_frame_ratio)*seg_begin),
-                             int((1-end_frame_ratio)*seg_end+end_frame_ratio*seg_begin),
+                             int(end_frame_ratio*seg_end+(1-end_frame_ratio)*seg_begin),
                              max_frame_num,
                              dtype=int)
 frames_per_second = max_frame_num / (seg_frame_num * (end_frame_ratio - start_frame_ratio)) * 60
@@ -123,16 +120,27 @@ def load_human():
 
 
 def load_object():
+    seg_name_list = np.load(TRUMANS_PATH+'/seg_name.npy')
+    seg_name = seg_name_list[seg_begin]
     object: dict = numpy.load(TRUMANS_PATH+f'/Object_all/Object_pose/{seg_name}.npy', allow_pickle=True).item()  # 这是一个被{}包起来的字典, 要做一下解包 .item()
 
-    for key in object.keys():
+    for key in tqdm(object.keys()):
         object[key]['rotation'] = np.array(object[key]['rotation'])[selected_frame-seg_begin]
         object[key]['location'] = np.array(object[key]['location'])[selected_frame-seg_begin]
         object_name = key
-        object_obj_path = f'../dataset/TRUMANS/Object_all/Object_mesh/{object_name}.obj'
-        object[key]['vertices'] = trimesh.load(object_obj_path).vertices
-        object[key]['faces'] = trimesh.load(object_obj_path).faces
-        object[key]['vertex_normals'] = compute_vertex_normals(object[key]['vertices'], object[key]['faces'])
+        decimated_mesh_path = f'../dataset/TRUMANS/Object_all/Object_mesh_decimated/{object_name}.obj'
+        # 如果已经有了decimated mesh, 就直接读取, 否则读取原始 mesh 并计算法向量
+        if os.path.exists(decimated_mesh_path):
+            decimated_mesh = trimesh.load(decimated_mesh_path)
+            object[key]['vertices'] = decimated_mesh.vertices
+            object[key]['faces'] = decimated_mesh.faces
+            object[key]['vertex_normals'] = compute_vertex_normals(object[key]['vertices'], object[key]['faces'])
+        else:
+            object_obj_path = f'../dataset/TRUMANS/Object_all/Object_mesh/{object_name}.obj'
+            original_mesh = trimesh.load(object_obj_path)
+            object[key]['vertices'] = original_mesh.vertices
+            object[key]['faces'] = original_mesh.faces
+            object[key]['vertex_normals'] = compute_vertex_normals(object[key]['vertices'], object[key]['faces'])
 
     return object
 
@@ -141,25 +149,42 @@ def load_scene():
     scene_flag = np.load(TRUMANS_PATH+'/scene_flag.npy')[seg_begin]  # 当前seg的场景标志
     scene_list = np.load(TRUMANS_PATH+'/scene_list.npy')  # 一个包含所有场景的列表
     scene_name = scene_list[scene_flag]  # 一个场景的名字
-    scene_path = f'../dataset/TRUMANS/Scene_mesh/{scene_name}.obj'
+    print(f'scene_name: {scene_name}')
+    scene_path = f'../dataset/TRUMANS/Scene_mesh_decimated/{scene_name}.obj'
+    scene_mesh = trimesh.load(scene_path)  # 一个场景的 mesh
+
     scene = {
-        'vertices': trimesh.load(scene_path).vertices,
-        'faces': trimesh.load(scene_path).faces,
-        'vertex_normals': compute_vertex_normals(trimesh.load(scene_path).vertices, trimesh.load(scene_path).faces)
+        'vertices': scene_mesh.vertices,
+        'faces': scene_mesh.faces,
+        'vertex_normals': compute_vertex_normals(scene_mesh.vertices, scene_mesh.faces)
     }
 
     return scene
 
 
-def write_rerun(human: dict, object: dict, scene: dict = None):
+def write_rerun(human: dict, object: dict, scene: dict):
     parser = argparse.ArgumentParser(description="Logs rich data using the Rerun SDK.")
     rr.script_add_args(parser)
     args = parser.parse_args()
-    rr.script_setup(args, f'TRUMANS seg: {seg_num}')
+    rr.script_setup(args, f'TRUMANS seg: {SEG_NUM}')
     rr.log("", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)  # Set an up-axis = +Y
     rr.set_time_seconds("stable_time", 0)
 
-    for i in range(max_frame_num):
+    if scene is not None:
+        rr.log(
+            'scene',
+            rr.Mesh3D(
+                vertex_positions=scene['vertices'],
+                triangle_indices=scene['faces'],
+                vertex_normals=scene['vertex_normals'],
+            ),
+        )
+    print(f'scene vertices: {scene["vertices"].shape[0]}, faces: {scene["faces"].shape[0]}')
+    print(f'human vertices: {human["vertices"][0].shape[0]}, faces: {human["faces"].shape[0]}')
+    for key in object.keys():
+        print(f'{key} vertices: {object[key]["vertices"].shape[0]}, faces: {object[key]["faces"].shape[0]}')
+
+    for i in tqdm(range(max_frame_num)):
         time = i / frames_per_second
         rr.set_time_seconds("stable_time", time)
 
@@ -173,9 +198,9 @@ def write_rerun(human: dict, object: dict, scene: dict = None):
         )
 
         for key in object.keys():  # 一个frame中遍历所有object:
-            # 只要名字里有 chair 的
-            if 'chair' not in key:
-                continue
+            # # 只要名字里有 chair 的
+            # if 'chair' not in key:
+            #     continue
 
             rr_transform = rr.Transform3D(
                 rotation=Quaternion(xyzw=R.from_euler('xyz', object[key]['rotation'][i]).as_quat()),
@@ -191,24 +216,15 @@ def write_rerun(human: dict, object: dict, scene: dict = None):
                    ),
                    )
 
-        if scene is not None:
-            rr.log(
-                'scene',
-                rr.Mesh3D(
-                    vertex_positions=scene['vertices'],
-                    triangle_indices=scene['faces'],
-                    vertex_normals=scene['vertex_normals'],
-                ),
-            )
-
     rr.script_teardown(args)
 
 
 def main():
+    scene = None
+
     human = load_human()
     object = load_object()
-    scene = None
-    # scene = load_scene()
+    scene = load_scene()
     write_rerun(human=human, object=object, scene=scene)
 
 
