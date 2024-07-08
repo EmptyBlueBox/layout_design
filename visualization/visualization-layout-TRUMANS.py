@@ -9,6 +9,7 @@ import rerun as rr
 import trimesh
 import numpy
 import pickle
+from utils.mesh_utils import compute_vertex_normals
 
 
 def setup_device():
@@ -28,10 +29,10 @@ VISUALIZATION = True  # 是否可视化
 SAVE = True  # 是否保存 human 和 object 的数据, 如果保存, 那么就是从末端开始选一定长度的帧, 否则从整体均匀选一定长度的帧
 OBJECT_ONLY_CHAIR = True  # 是否只选择椅子
 
-SEG_NUM = 5  # 可视化哪个seg
+SEG_NUM = 1  # 可视化哪个seg
 SET_FRAME_NUM = 100  # 一个seg中试图选择的帧数
 START_RATIO = 0.44  # 选择开始的帧数比例, 如果是0.44, 那么就是从44%的位置开始, 在 SAVE=True 的情况下, 是没用的
-END_RATIO = 0.50  # 选择停止的帧数比例, 如果是0.48, 那么就是到48%的位置结束, 在 SAVE=True 的情况下, 从这个地方往前选 SET_FRAME_NUM 长度的帧
+END_RATIO = 0.48  # 选择停止的帧数比例, 如果是0.48, 那么就是到48%的位置结束, 在 SAVE=True 的情况下, 从这个地方往前选 SET_FRAME_NUM 长度的帧
 # start_frame_ratio = 0.  # 选择开始的帧数比例
 # end_frame_ratio = 1.  # 选择停止的帧数比例
 
@@ -65,50 +66,6 @@ else:  # 不需要保存的时候从整体均匀选一定长度的帧
     print(f'frames_per_second: {frames_per_second}')
 
 
-def compute_vertex_normals(vertices, faces):
-    """
-    使用向量化操作计算顶点法向量。
-
-    参数:
-    vertices (np.ndarray): 顶点坐标数组，形状为 (N, 3)。
-    faces (np.ndarray): 面的顶点索引数组，形状为 (M, 3)。
-
-    返回:
-    np.ndarray: 归一化后的顶点法向量数组，形状为 (N, 3)。
-    """
-    # 获取三角形的顶点
-    v0 = vertices[faces[:, 0]]
-    v1 = vertices[faces[:, 1]]
-    v2 = vertices[faces[:, 2]]
-
-    # 计算每个面的法向量
-    normals = np.cross(v1 - v0, v2 - v0)
-
-    # 计算法向量的长度
-    norm_lengths = np.linalg.norm(normals, axis=1)
-
-    # 避免除以零，将长度为零的法向量设为一个微小值
-    norm_lengths[norm_lengths == 0] = 1e-10
-
-    # 归一化法向量
-    normals /= norm_lengths[:, np.newaxis]
-
-    # 将法向量累加到顶点上
-    vertex_normals = np.zeros_like(vertices)
-    for i in range(3):
-        np.add.at(vertex_normals, faces[:, i], normals)
-
-    # 计算顶点法向量的长度
-    vertex_norm_lengths = np.linalg.norm(vertex_normals, axis=1)
-
-    # 避免除以零，将长度为零的顶点法向量设为一个微小值
-    vertex_norm_lengths[vertex_norm_lengths == 0] = 1e-10
-
-    # 归一化顶点法向量
-    vertex_normals = (vertex_normals.T / vertex_norm_lengths).T
-    return vertex_normals
-
-
 def load_human():
 
     human_model = smplx.create(model_path='/Users/emptyblue/Documents/Research/HUMAN_MODELS',
@@ -121,28 +78,18 @@ def load_human():
                                batch_size=max_frame_num)
 
     smpl_params = {
-        'poses': np.load(TRUMANS_PATH+'/human_pose.npy')[selected_frame],  # (max_frame_num, 63)
-        'orientation': np.load(TRUMANS_PATH+'/human_orient.npy')[selected_frame],  # (max_frame_num, 3)
-        'translation': np.load(TRUMANS_PATH+'/human_transl.npy')[selected_frame],  # (max_frame_num, 3)
+        'poses': np.load(TRUMANS_PATH+'/human_pose.npy')[selected_frame].reshape(-1, 21, 3),  # (max_frame_num, 21, 3)
+        'orientation': np.load(TRUMANS_PATH+'/human_orient.npy')[selected_frame].reshape(-1, 3),  # (max_frame_num, 3)
+        'translation': np.load(TRUMANS_PATH+'/human_transl.npy')[selected_frame].reshape(-1, 3),  # (max_frame_num, 3)
     }
-
-    # 后续处理
-    smpl_params['poses'] = torch.tensor(smpl_params['poses'].reshape(-1, 21, 3), dtype=torch.float32)
-    smpl_params['orientation'] = torch.tensor(smpl_params['orientation'].reshape(-1, 3), dtype=torch.float32)
-    smpl_params['translation'] = torch.tensor(smpl_params['translation'].reshape(-1, 3), dtype=torch.float32)
 
     # print(f'smpl_params.pose: {smpl_params["poses"].shape}')
     # print(f'smpl_params.orientation: {smpl_params["orientation"].shape}')
     # print(f'smpl_params.translation: {smpl_params["translation"].shape}')
 
-    # 保存 smpl_params
-    if SAVE:
-        pickle.dump(smpl_params, open(f'{SAVE_PATH}/human-params.pkl', 'wb'))  # 保存 smpl_params
-        print(f'human params saved to {SAVE_PATH}/human-params.pkl, \nkeys: {smpl_params.keys()}')
-
-    output = human_model(body_pose=smpl_params['poses'],
-                         global_orient=smpl_params['orientation'],
-                         transl=smpl_params['translation'])
+    output = human_model(body_pose=torch.tensor(smpl_params['poses'], dtype=torch.float32),
+                         global_orient=torch.tensor(smpl_params['orientation'], dtype=torch.float32),
+                         transl=torch.tensor(smpl_params['translation'], dtype=torch.float32))
     vertices = output.vertices.detach().cpu().numpy()
     faces = human_model.faces
 
@@ -155,9 +102,11 @@ def load_human():
     # print(f'body_model.faces.shape: {human_model.faces.shape}')
     # print(f'vertex_normals.shape: {vertex_normals.shape}')
 
-    human_mesh = {'vertices': vertices, 'faces': faces, 'vertex_normals': vertex_normals}
+    smpl_params['vertices'] = vertices
+    smpl_params['faces'] = faces
+    smpl_params['vertex_normals'] = vertex_normals
 
-    return human_mesh
+    return smpl_params
 
 
 def load_object():
@@ -268,21 +217,26 @@ def save_rerun(human: dict, object: dict, scene: dict):
     for key in object.keys():
         print(f'{key} vertices: {object[key]["vertices"].shape[0]}, faces: {object[key]["faces"].shape[0]}')
 
-    pickle.dump(human, open(f'{SAVE_PATH}/human-mesh.pkl', 'wb'))  # 保存 human
-    print(f'human mesh saved to {SAVE_PATH}/human-mesh.pkl, \nkeys: {human.keys()}\n')
+    human_params = {'poses': human['poses'], 'orientation': human['orientation'], 'translation': human['translation']}
+    pickle.dump(human_params, open(f'{SAVE_PATH}/human-params.pkl', 'wb'))  # 保存 smpl_params
+    print(f'human params saved to {SAVE_PATH}/human-params.pkl, \nkeys: {human_params.keys()}')
+
+    # human_mesh = {'vertices': human['vertices'], 'faces': human['faces'], 'vertex_normals': human['vertex_normals']}
+    # pickle.dump(human, open(f'{SAVE_PATH}/human-mesh.pkl', 'wb'))  # 保存 human
+    # print(f'human mesh saved to {SAVE_PATH}/human-mesh.pkl, \nkeys: {human.keys()}\n')
 
     object_params = {key: {'rotation': object[key]['rotation'], 'location': object[key]['location']} for key in object.keys()}
     pickle.dump(object_params, open(f'{SAVE_PATH}/object-params.pkl', 'wb'))  # 保存 object_params
     print(
         f'object params saved to {SAVE_PATH}/object-params.pkl, \nobjects: {object_params.keys()}, keys: {object_params[list(object_params.keys())[0]].keys()}\n')
 
-    object_mesh = {key: {'vertices': object[key]['vertices'], 'faces': object[key]['faces'],
-                         'vertex_normals': object[key]['vertex_normals']} for key in object.keys()}
-    pickle.dump(object_mesh, open(f'{SAVE_PATH}/object-mesh.pkl', 'wb'))  # 保存 object
-    print(
-        f'object mesh saved to {SAVE_PATH}/object-mesh.pkl, \nobjects: {object.keys()}, keys: {object[list(object.keys())[0]].keys()}\n')
+    # object_mesh = {key: {'vertices': object[key]['vertices'], 'faces': object[key]['faces'],
+    #                      'vertex_normals': object[key]['vertex_normals']} for key in object.keys()}
+    # pickle.dump(object_mesh, open(f'{SAVE_PATH}/object-mesh.pkl', 'wb'))  # 保存 object
+    # print(
+    #     f'object mesh saved to {SAVE_PATH}/object-mesh.pkl, \nobjects: {object.keys()}, keys: {object[list(object.keys())[0]].keys()}\n')
 
-    print(f'saved mesh frame_num: {max_frame_num}, frames_per_second: {frames_per_second}')
+    # print(f'saved mesh frame_num: {max_frame_num}, frames_per_second: {frames_per_second}')
     print('save human and object mesh done!\n')
 
 

@@ -7,19 +7,8 @@ from scipy.spatial.transform import Rotation as R
 from rerun.datatypes import Quaternion
 import rerun as rr
 import trimesh
-import numpy
 import pickle
-
-
-def setup_device():
-    """设置计算设备"""
-    if torch.cuda.is_available():
-        device = torch.device("cuda:0")
-        torch.cuda.set_device(device)
-    else:
-        device = torch.device("cpu")
-    return device
-
+from utils.mesh_utils import compute_vertex_normals
 
 DATA_NAME = 'seat_5'
 DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/{DATA_NAME}'
@@ -27,50 +16,6 @@ DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-
 smpl_params = pickle.load(open(DATA_FOLDER+'/human-params.pkl', 'rb'))  # 读取 smpl_params
 FRAME_NUM = smpl_params['poses'].shape[0]
 FPS = 60
-
-
-def compute_vertex_normals(vertices, faces):
-    """
-    使用向量化操作计算顶点法向量。
-
-    参数:
-    vertices (np.ndarray): 顶点坐标数组，形状为 (N, 3)。
-    faces (np.ndarray): 面的顶点索引数组，形状为 (M, 3)。
-
-    返回:
-    np.ndarray: 归一化后的顶点法向量数组，形状为 (N, 3)。
-    """
-    # 获取三角形的顶点
-    v0 = vertices[faces[:, 0]]
-    v1 = vertices[faces[:, 1]]
-    v2 = vertices[faces[:, 2]]
-
-    # 计算每个面的法向量
-    normals = np.cross(v1 - v0, v2 - v0)
-
-    # 计算法向量的长度
-    norm_lengths = np.linalg.norm(normals, axis=1)
-
-    # 避免除以零，将长度为零的法向量设为一个微小值
-    norm_lengths[norm_lengths == 0] = 1e-10
-
-    # 归一化法向量
-    normals /= norm_lengths[:, np.newaxis]
-
-    # 将法向量累加到顶点上
-    vertex_normals = np.zeros_like(vertices)
-    for i in range(3):
-        np.add.at(vertex_normals, faces[:, i], normals)
-
-    # 计算顶点法向量的长度
-    vertex_norm_lengths = np.linalg.norm(vertex_normals, axis=1)
-
-    # 避免除以零，将长度为零的顶点法向量设为一个微小值
-    vertex_norm_lengths[vertex_norm_lengths == 0] = 1e-10
-
-    # 归一化顶点法向量
-    vertex_normals = (vertex_normals.T / vertex_norm_lengths).T
-    return vertex_normals
 
 
 def load_human():

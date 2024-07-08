@@ -1,5 +1,4 @@
 import functools
-
 import torch
 import torch.nn.functional as F
 
@@ -105,9 +104,7 @@ def euler_angles_to_matrix(euler_angles, convention: str):
     return functools.reduce(torch.matmul, matrices)
 
 
-def _angle_from_tan(
-    axis: str, other_axis: str, data, horizontal: bool, tait_bryan: bool
-):
+def _angle_from_tan(axis: str, other_axis: str, data, horizontal: bool, tait_bryan: bool):
     i1, i2 = {"X": (2, 1), "Y": (0, 2), "Z": (1, 0)}[axis]
     if horizontal:
         i2, i1 = i1, i2
