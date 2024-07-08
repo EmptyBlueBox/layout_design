@@ -5,12 +5,11 @@ Optimize parameter: chair rotation
 Optimization method: grid search
 '''
 
-from networkx import center
 import smplx
 import argparse
 import numpy as np
 from scipy.spatial.transform import Rotation as R
-from rerun.datatypes import Quaternion, Angle, Rotation3D, RotationAxisAngle
+from rerun.datatypes import Quaternion, Angle, RotationAxisAngle
 import rerun as rr
 import trimesh
 import pickle
@@ -35,7 +34,7 @@ PARAMETER_WALL = {
 
 
 def load_human():
-    smpl_params = pickle.load(open(DATA_FOLDER+'/human-params.pkl', 'rb'))  # 读取 smpl_params
+    human_params = pickle.load(open(DATA_FOLDER+'/human-params.pkl', 'rb'))  # 读取 smpl_params
 
     human_model = smplx.create(model_path='/Users/emptyblue/Documents/Research/HUMAN_MODELS',
                                model_type='smplx',
@@ -46,9 +45,9 @@ def load_human():
                                ext='npz',
                                batch_size=FRAME_NUM)
 
-    output = human_model(body_pose=torch.tensor(smpl_params['poses'], dtype=torch.float32),
-                         global_orient=torch.tensor(smpl_params['orientation'], dtype=torch.float32),
-                         transl=torch.tensor(smpl_params['translation'], dtype=torch.float32))
+    output = human_model(body_pose=torch.tensor(human_params['poses'], dtype=torch.float32),
+                         global_orient=torch.tensor(human_params['orientation'], dtype=torch.float32),
+                         transl=torch.tensor(human_params['translation'], dtype=torch.float32))
     vertices = output.vertices.detach().cpu().numpy()
     faces = human_model.faces
 

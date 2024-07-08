@@ -30,13 +30,13 @@ SAVE = True  # 是否保存 human 和 object 的数据, 如果保存, 那么就�
 OBJECT_ONLY_CHAIR = True  # 是否只选择椅子
 
 SEG_NUM = 1  # 可视化哪个seg
-SET_FRAME_NUM = 100  # 一个seg中试图选择的帧数
-START_RATIO = 0.44  # 选择开始的帧数比例, 如果是0.44, 那么就是从44%的位置开始, 在 SAVE=True 的情况下, 是没用的
-END_RATIO = 0.48  # 选择停止的帧数比例, 如果是0.48, 那么就是到48%的位置结束, 在 SAVE=True 的情况下, 从这个地方往前选 SET_FRAME_NUM 长度的帧
+SET_FRAME_NUM = 50  # 一个seg中试图选择的帧数
+START_RATIO = 0.0  # 选择开始的帧数比例, 如果是0.44, 那么就是从44%的位置开始, 在 SAVE=True 的情况下, 是没用的
+END_RATIO = 0.455  # 选择停止的帧数比例, 如果是0.48, 那么就是到48%的位置结束, 在 SAVE=True 的情况下, 从这个地方往前选 SET_FRAME_NUM 长度的帧
 # start_frame_ratio = 0.  # 选择开始的帧数比例
 # end_frame_ratio = 1.  # 选择停止的帧数比例
 
-SAVE_PATH = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/seat_{SEG_NUM}'
+SAVE_PATH = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/seat_{SEG_NUM}-frame_num_{SET_FRAME_NUM}'
 if not os.path.exists(SAVE_PATH):
     os.makedirs(SAVE_PATH)
 
@@ -139,6 +139,8 @@ def load_object():
 
 
 def load_scene():
+    if SAVE:
+        return None
     scene_flag = np.load(TRUMANS_PATH+'/scene_flag.npy')[seg_begin]  # 当前seg的场景标志
     scene_list = np.load(TRUMANS_PATH+'/scene_list.npy')  # 一个包含所有场景的列表
     scene_name = scene_list[scene_flag]  # 一个场景的名字
@@ -160,7 +162,7 @@ def write_rerun(human: dict, object: dict, scene: dict):
     parser = argparse.ArgumentParser(description="Logs rich data using the Rerun SDK.")
     rr.script_add_args(parser)
     args = parser.parse_args()
-    rr.script_setup(args, f'TRUMANS seg: {SEG_NUM}')
+    rr.script_setup(args, f'TRUMANS seg: {SEG_NUM}, frame_num: {max_frame_num}')
     rr.log("", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)  # Set an up-axis = +Y
     rr.set_time_seconds("stable_time", 0)
 
@@ -173,7 +175,7 @@ def write_rerun(human: dict, object: dict, scene: dict):
                 vertex_normals=scene['vertex_normals'],
             ),
         )
-    print(f'scene vertices: {scene["vertices"].shape[0]}, faces: {scene["faces"].shape[0]}')
+        print(f'scene vertices: {scene["vertices"].shape[0]}, faces: {scene["faces"].shape[0]}')
     print(f'human vertices: {human["vertices"][0].shape[0]}, faces: {human["faces"].shape[0]}')
     for key in object.keys():
         print(f'{key} vertices: {object[key]["vertices"].shape[0]}, faces: {object[key]["faces"].shape[0]}')
@@ -212,7 +214,6 @@ def write_rerun(human: dict, object: dict, scene: dict):
 
 def save_rerun(human: dict, object: dict, scene: dict):
     print('saving human and object mesh...')
-    print(f'scene vertices: {scene["vertices"].shape[0]}, faces: {scene["faces"].shape[0]}')
     print(f'human vertices: {human["vertices"][0].shape[0]}, faces: {human["faces"].shape[0]}')
     for key in object.keys():
         print(f'{key} vertices: {object[key]["vertices"].shape[0]}, faces: {object[key]["faces"].shape[0]}')
