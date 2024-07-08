@@ -1,6 +1,5 @@
 import smplx
 import argparse
-import os
 import numpy as np
 import torch
 from scipy.spatial.transform import Rotation as R
@@ -9,17 +8,18 @@ import rerun as rr
 import trimesh
 import pickle
 from utils.mesh_utils import compute_vertex_normals
+from metric.metric_machanical_energy import mechanical_energy
 
-DATA_NAME = 'seat_5'
+DATA_NAME = 'seat_5-frame_num_150'
 DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/{DATA_NAME}'
 
 smpl_params = pickle.load(open(DATA_FOLDER+'/human-params.pkl', 'rb'))  # 读取 smpl_params
 FRAME_NUM = smpl_params['poses'].shape[0]
-FPS = 60
+FPS = 30
 
 
 def load_human():
-    smpl_params = pickle.load(open(DATA_FOLDER+'/human-params.pkl', 'rb'))  # 读取 smpl_params
+    human_params = pickle.load(open(DATA_FOLDER+'/human-params.pkl', 'rb'))  # 读取 smpl_params
 
     human_model = smplx.create(model_path='/Users/emptyblue/Documents/Research/HUMAN_MODELS',
                                model_type='smplx',
@@ -30,9 +30,10 @@ def load_human():
                                ext='npz',
                                batch_size=FRAME_NUM)
 
-    output = human_model(body_pose=smpl_params['poses'],
-                         global_orient=smpl_params['orientation'],
-                         transl=smpl_params['translation'])
+    output = human_model(body_pose=torch.tensor(human_params['poses'], dtype=torch.float32),
+                         global_orient=torch.tensor(human_params['orientation'], dtype=torch.float32),
+                         transl=torch.tensor(human_params['translation'], dtype=torch.float32)
+                         )
     vertices = output.vertices.detach().cpu().numpy()
     faces = human_model.faces
 
@@ -41,13 +42,11 @@ def load_human():
     for i in range(vertices.shape[0]):
         vertex_normals[i] = compute_vertex_normals(vertices[i], faces)
 
-    # print(f'vertices.shape: {vertices.shape}')
-    # print(f'body_model.faces.shape: {human_model.faces.shape}')
-    # print(f'vertex_normals.shape: {vertex_normals.shape}')
+    human_params['vertices'] = vertices
+    human_params['faces'] = faces
+    human_params['vertex_normals'] = vertex_normals
 
-    human_mesh = {'vertices': vertices, 'faces': faces, 'vertex_normals': vertex_normals}
-
-    return human_mesh
+    return human_params
 
 
 def load_object():
@@ -69,7 +68,7 @@ def write_rerun(human: dict, object: dict):
     parser = argparse.ArgumentParser(description="Logs rich data using the Rerun SDK.")
     rr.script_add_args(parser)
     args = parser.parse_args()
-    rr.script_setup(args, f'TRUMANS seg: {DATA_NAME}')
+    rr.script_setup(args, f'Simple visualization: {DATA_NAME}')
     rr.log("", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)  # Set an up-axis = +Y
     rr.set_time_seconds("stable_time", 0)
 
@@ -77,6 +76,10 @@ def write_rerun(human: dict, object: dict):
     for key in object.keys():
         print(f'{key} vertices: {object[key]["vertices"].shape[0]}, faces: {object[key]["faces"].shape[0]}')
 
+    # 计算功率
+    power = mechanical_energy(human_params=human, FPS=30, data_name=DATA_NAME)
+
+    # 一个frame中遍历所有object: 人物, 椅子, 桌子等
     for i in range(FRAME_NUM):
         time = i / FPS
         rr.set_time_seconds("stable_time", time)

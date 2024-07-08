@@ -18,8 +18,8 @@ from utils.mesh_utils import compute_vertex_normals
 from utils.pytorch3d_utils import quaternion_multiply, axis_angle_to_quaternion, quaternion_to_axis_angle, quaternion_apply
 
 
-DATA_NAME = 'seat_1'
-EPOCH = 100
+DATA_NAME = 'seat_5-frame_num_150'
+EPOCH = 200
 
 DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/{DATA_NAME}'
 smpl_params = pickle.load(open(DATA_FOLDER+'/human-params.pkl', 'rb'))  # 读取 smpl_params
@@ -30,6 +30,12 @@ PARAMETER_WALL = {
     'half_sizes': [2., 1., 1.5],
     'axis': [0, 1, 0],
     'angle': -15,
+}
+PARAMETER_WALL = {
+    'centers': [-0.3, .9, 1.9],
+    'half_sizes': [.3, 1., 2.],
+    'axis': [0, 1, 0],
+    'angle': 0,
 }
 
 
@@ -84,7 +90,7 @@ def write_rerun(human: dict, object: dict, seg_name: str):
     parser = argparse.ArgumentParser(description="Logs rich data using the Rerun SDK.")
     rr.script_add_args(parser)
     args = parser.parse_args()
-    rr.script_setup(args, f'grid_search vanilla: {DATA_NAME}')
+    rr.script_setup(args, f'gradient descent vanilla: {DATA_NAME}')
     rr.log("", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)  # Set an up-axis = +Y
     rr.set_time_seconds("stable_time", 0)
 
