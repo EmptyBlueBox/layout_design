@@ -38,7 +38,6 @@ PARAMETER_WALL = {
     'angle': 0,
 }
 
-
 def load_human():
     human_params = pickle.load(open(DATA_FOLDER+'/human-params.pkl', 'rb'))  # 读取 smpl_params
 
