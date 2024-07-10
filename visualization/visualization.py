@@ -77,7 +77,7 @@ def write_rerun(human: dict, object: dict):
         print(f'{key} vertices: {object[key]["vertices"].shape[0]}, faces: {object[key]["faces"].shape[0]}')
 
     # 计算功率
-    power = mechanical_energy(human_params=human, FPS=30, data_name=DATA_NAME)
+    energy = mechanical_energy(human_params=human, FPS=30, data_name=DATA_NAME)
 
     # 一个frame中遍历所有object: 人物, 椅子, 桌子等
     for i in range(FRAME_NUM):
@@ -92,7 +92,7 @@ def write_rerun(human: dict, object: dict):
                 vertex_normals=human['vertex_normals'][i],
             ),
         )
-
+        
         for key in object.keys():  # 一个frame中遍历所有object: 人物, 椅子, 桌子等
             rr_transform = rr.Transform3D(
                 rotation=Quaternion(xyzw=R.from_euler('xyz', object[key]['rotation'][i]).as_quat()),
@@ -107,6 +107,11 @@ def write_rerun(human: dict, object: dict):
                        vertex_normals=object[key]['vertex_normals'],
                    ),
                    )
+
+        rr.log('filtered_kinetic_energy', rr.Scalar(energy['filtered_kinetic_energy'][i])) # 画能量曲线
+        rr.log('filtered_mechanical_energy', rr.Scalar(energy['filtered_mechanical_energy'][i])) # 画能量曲线
+        rr.log('left_Thigh', rr.Scalar(energy['filtered_angular_velocity'][i,1])) # 画转速曲线
+        rr.log('right_Thigh', rr.Scalar(energy['filtered_angular_velocity'][i,2])) # 画转速曲线
 
     rr.script_teardown(args)
     print('write rerun done!\n')

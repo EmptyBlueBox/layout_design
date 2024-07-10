@@ -1,12 +1,14 @@
 .DS_Store
 .vscode
-
 __pycache__
+build
+
+*.mp4
+*.png
 *.pkl
 *.blend
 *.blend1
 *.egg-info
-build
 
 HOI-M3
 TRUMANS

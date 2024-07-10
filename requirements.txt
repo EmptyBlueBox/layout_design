@@ -1,0 +1,7 @@
+python == 3.9.19
+smplx == 0.1.28
+matplotlib == 3.9.1
+scipy == 1.13.1
+rerun-sdk == 0.17.0
+trimesh == 4.4.2
+mesh_to_sdf == 0.0.15
