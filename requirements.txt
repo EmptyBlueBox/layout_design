@@ -5,3 +5,8 @@ scipy == 1.13.1
 rerun-sdk == 0.17.0
 trimesh == 4.4.2
 mesh_to_sdf == 0.0.15
+PyBullet == 3.2.6
+mujoco == 3.1.6
+mujoco-python-viewer == 0.1.4
+google == 3.0.0
+mediapy == 1.2.2

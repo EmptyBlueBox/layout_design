@@ -12,5 +12,5 @@ build
 
 HOI-M3
 TRUMANS
-test*.py
+test*
 json2pkl.py
