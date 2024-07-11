@@ -10,3 +10,4 @@ mujoco == 3.1.6
 mujoco-python-viewer == 0.1.4
 google == 3.0.0
 mediapy == 1.2.2
+tqdm == 4.66.4
