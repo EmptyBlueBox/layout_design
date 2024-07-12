@@ -15,3 +15,5 @@ TRUMANS
 test*
 json2pkl.py
 pybullet_data
+MUJOCO_LOG.TXT
+imgs

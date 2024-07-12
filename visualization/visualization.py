@@ -45,6 +45,7 @@ def load_human():
     human_params['vertices'] = vertices
     human_params['faces'] = faces
     human_params['vertex_normals'] = vertex_normals
+    human_params['joints'] = output.joints.detach().cpu().numpy()
 
     return human_params
 
@@ -92,7 +93,7 @@ def write_rerun(human: dict, object: dict):
                 vertex_normals=human['vertex_normals'][i],
             ),
         )
-        
+
         for key in object.keys():  # 一个frame中遍历所有object: 人物, 椅子, 桌子等
             rr_transform = rr.Transform3D(
                 rotation=Quaternion(xyzw=R.from_euler('xyz', object[key]['rotation'][i]).as_quat()),
@@ -108,10 +109,12 @@ def write_rerun(human: dict, object: dict):
                    ),
                    )
 
-        rr.log('filtered_kinetic_energy', rr.Scalar(energy['filtered_kinetic_energy'][i])) # 画能量曲线
-        rr.log('filtered_mechanical_energy', rr.Scalar(energy['filtered_mechanical_energy'][i])) # 画能量曲线
-        rr.log('left_Thigh', rr.Scalar(energy['filtered_angular_velocity'][i,1])) # 画转速曲线
-        rr.log('right_Thigh', rr.Scalar(energy['filtered_angular_velocity'][i,2])) # 画转速曲线
+        rr.log('joint', rr.Points3D(human['joints'][i]))
+
+        rr.log('filtered_kinetic_energy', rr.Scalar(energy['filtered_kinetic_energy'][i]))  # 画能量曲线
+        # rr.log('filtered_mechanical_energy', rr.Scalar(energy['filtered_mechanical_energy'][i]))  # 画能量曲线
+        # rr.log('left_Thigh', rr.Scalar(energy['filtered_angular_velocity'][i, 1]))  # 画转速曲线
+        # rr.log('right_Thigh', rr.Scalar(energy['filtered_angular_velocity'][i, 2]))  # 画转速曲线
 
     rr.script_teardown(args)
     print('write rerun done!\n')
