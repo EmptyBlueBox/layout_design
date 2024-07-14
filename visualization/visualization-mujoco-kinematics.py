@@ -1,3 +1,9 @@
+'''
+mjpython visualization-mujoco-kinematics.py
+
+1. Call metric.metric_torque.get_mujoco_data(data_name) to get motion data
+2. Use passive viewer to visualize the motion data without physics simulation
+'''
 import time
 import mujoco
 import mujoco.viewer
@@ -10,7 +16,7 @@ model = mujoco.MjModel.from_xml_path('../humanoid/smplx_humanoid-only_body.xml')
 model.opt.gravity = (0, -9.81, 0)
 data = mujoco.MjData(model)
 
-data_name = 'seat_5-frame_num_150'
+data_name = 'seat_1-frame_num_150'
 motion_data = get_mujoco_data(data_name)
 fps = motion_data['fps']
 human_root_position = motion_data['human_root_position']  # (frame_num, 3)
@@ -20,7 +26,6 @@ human_pose_euler = motion_data['human_pose_euler']  # (frame_num, 22, 3)
 human_pose_angular_velocity = motion_data['human_pose_angular_velocity']  # (frame_num, 22, 3)
 human_pose_angular_acceleration = motion_data['human_pose_angular_acceleration']  # (frame_num, 22, 3)
 
-torque_estimation = np.zeros((human_root_position.shape[0], model.nv))
 with mujoco.viewer.launch_passive(model, data) as viewer:
     # Close the viewer automatically after 30 wall-seconds.
     start = time.time()
@@ -49,25 +54,10 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
 
         viewer.sync()
 
-        with viewer.lock():
-            mujoco.mj_inverse(model, data)
-            torque_estimation[frame_num-1] = data.qfrc_inverse.copy()
-
-        time_until_next_step = 1.0 / fps - (time.time() - step_start)
+        time_until_next_step = 1.0 / fps * 3 - (time.time() - step_start)
         if time_until_next_step > 0:
             time.sleep(time_until_next_step)
 
         frame_num += 1
         if frame_num == human_root_position.shape[0]:
             break
-
-torque_left_thigh = torque_estimation[:, 3+3*1:3+3*2].reshape(-1, 3)
-print(f'torque_left_thigh shape: {torque_left_thigh.shape}')
-print(f'torque_left_thigh: {np.max(torque_left_thigh[:,0])}')
-print(f'torque_left_thigh: {np.max(torque_left_thigh[:,1])}')
-print(f'torque_left_thigh: {np.max(torque_left_thigh[:,2])}')
-# plt.plot(torque_left_thigh[:, 0])
-# plt.plot(torque_left_thigh[:, 1])
-# plt.plot(torque_left_thigh[:, 2])
-# plt.savefig(f'./imgs/torque_left_thigh-{data_name}.png')
-# plt.close()

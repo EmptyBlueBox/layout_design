@@ -8,7 +8,7 @@ from utils.data_utils import butterworth_filter
 
 fps = 30
 desired_fps = 1/0.002
-# desired_fps = 30
+desired_fps = 30
 smplx2mujoco = [0, 1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 12, 15, 13, 16, 18, 20, 14, 17, 19, 21]
 
 
@@ -27,6 +27,8 @@ def get_mujoco_data(data_name):
     for i in range(3):
         human_root_position_interp[:, i] = butterworth_filter(human_root_position_interp[:, i], cutoff=1, fs=desired_fps)
     human_root_position = human_root_position_interp
+    human_root_position = human_root_position[:, [0, 2, 1]]  # 转换为 Mujoco 的坐标系, z up
+    human_root_position[:, 1] *= -1  # y轴取反, 因为旋转后的y是之前的-z
     # 计算人体的根结点的速度
     human_root_velocity = np.gradient(human_root_position, axis=0) * desired_fps
     # 计算人体的根结点的加速度
@@ -36,13 +38,16 @@ def get_mujoco_data(data_name):
     human_rotation_euler = np.zeros_like(human_params['poses'])
     for i in range(human_params['poses'].shape[0]):
         # 将旋转向量转换为欧拉角
-        for j in range(human_params['poses'].shape[1]):
-            human_rotation_euler[i, j] = R.from_rotvec(human_params['poses'][i, j]).as_euler('xyz', degrees=False)
+        human_rotation_euler[i] = R.from_rotvec(human_params['poses'][i]).as_euler('xyz', degrees=False)
 
     # 计算root的欧拉角
     human_orientation_euler = np.zeros_like(human_params['orientation'])
-    for i in range(human_params['poses'].shape[0]):
-        human_orientation_euler[i] = R.from_rotvec(human_params['orientation'][i]).as_euler('xyz', degrees=False)
+    human_orientation_euler = R.from_rotvec(human_params['orientation']).as_euler('xyz', degrees=False)
+
+    # 转换为 Mujoco 的坐标系, z up
+    rot = R.from_rotvec([np.pi/2, 0, 0])
+    human_orientation_euler_z_up = (rot*R.from_euler('xyz', human_orientation_euler, degrees=False)).as_euler('xyz', degrees=False)
+    human_orientation_euler = human_orientation_euler_z_up
 
     # 将人体的欧拉角和root的欧拉角合并, 并将其转换为 Mujoco 的顺序
     human_pose_euler = np.concatenate([human_orientation_euler[:, None, :], human_rotation_euler], axis=1)[:, smplx2mujoco]
@@ -56,7 +61,7 @@ def get_mujoco_data(data_name):
     for i in range(human_pose_euler_interp.shape[1]):
         for j in range(3):
             human_pose_euler_interp[:, i, j] = butterworth_filter(human_pose_euler_interp[:, i, j], cutoff=1, fs=desired_fps)
-    human_pose_euler = human_pose_euler_interp
+    # human_pose_euler = human_pose_euler_interp
 
     # 计算角速度
     human_pose_angular_velocity = np.gradient(human_pose_euler, axis=0) * desired_fps
