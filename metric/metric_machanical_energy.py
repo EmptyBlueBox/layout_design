@@ -31,7 +31,7 @@ MASS_DISTRIBUTION = np.array([Pelvis, Thigh/2, Thigh/2, Abdomen/2, Leg/2, Leg/2,
 FPS = 30
 
 
-def mechanical_energy(human_params, FPS=30, data_name=None):
+def mechanical_energy_vanilla(human_params, FPS=30, data_name=None):
     """
     This Python function calculates various aspects of mechanical energy, including translational and
     rotational energy, for a human model based on input parameters.
@@ -233,6 +233,6 @@ if __name__ == '__main__':
     for data_name in DATA_NAME:
         DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/{data_name}'
         human_params = pickle.load(open(f'{DATA_FOLDER}/human-params.pkl', 'rb'))
-        energy_entery = mechanical_energy(human_params, FPS=30, data_name=data_name)
+        energy_entery = mechanical_energy_vanilla(human_params, FPS=30, data_name=data_name)
         output.append(energy_entery)
     plot_energy(output)

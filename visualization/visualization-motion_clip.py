@@ -8,7 +8,7 @@ import rerun as rr
 import trimesh
 import pickle
 from utils.mesh_utils import compute_vertex_normals
-from metric.metric_machanical_energy import mechanical_energy
+from metric.metric_machanical_energy import mechanical_energy_vanilla
 
 DATA_NAME = 'seat_5-frame_num_150'
 DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/{DATA_NAME}'
@@ -78,7 +78,7 @@ def write_rerun(human: dict, object: dict):
         print(f'{key} vertices: {object[key]["vertices"].shape[0]}, faces: {object[key]["faces"].shape[0]}')
 
     # 计算功率
-    energy = mechanical_energy(human_params=human, FPS=30, data_name=DATA_NAME)
+    energy = mechanical_energy_vanilla(human_params=human, FPS=30, data_name=DATA_NAME)
 
     # 一个frame中遍历所有object: 人物, 椅子, 桌子等
     for i in range(FRAME_NUM):

@@ -12,6 +12,7 @@ import mujoco
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 from metric.metric_torque import get_mujoco_data, get_torque
+import matplotlib.pyplot as plt
 
 model = mujoco.MjModel.from_xml_path('../humanoid/smplx_humanoid-only_body.xml')
 data = mujoco.MjData(model)
@@ -32,7 +33,7 @@ torque_estimation = get_torque(motion_data)
 
 def controller_torque(model, data):
     fps = motion_data['fps']
-    index = int(data.time * fps)  # frame_num
+    index = int(data.time * fps)  # frame_num   
     data.ctrl = torque_estimation[index, 6:]
     return
 
@@ -49,22 +50,4 @@ def controller_pd(model, data):
     return
 
 
-mujoco.set_mjcb_control(controller_pd)
-
-with mujoco.viewer.launch_passive(model, data) as viewer:
-    # Close the viewer automatically after 30 wall-seconds.
-    start = time.time()
-    frame_num = 0
-    while viewer.is_running() and time.time() - start < 30:
-        step_start = time.time()
-
-        mujoco.mj_step(model, data)
-        viewer.sync()
-
-        time_until_next_step = 1.0 / fps - (time.time() - step_start)
-        if time_until_next_step > 0:
-            time.sleep(time_until_next_step)
-
-        frame_num += 1
-        if frame_num == human_root_position.shape[0]:
-            break
+# mujoco.set_mjcb_control(controller_pd)

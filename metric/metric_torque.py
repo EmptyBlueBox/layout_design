@@ -44,7 +44,7 @@ def get_mujoco_data(data_name):
     human_orientation_euler = np.zeros_like(human_params['orientation'])
     human_orientation_euler = R.from_rotvec(human_params['orientation']).as_euler('xyz', degrees=False)
 
-    # 转换为 Mujoco 的坐标系, z up
+    # 绕 x 轴旋转 90 度, 转换为 Mujoco 的坐标系, z up
     rot = R.from_rotvec([np.pi/2, 0, 0])
     human_orientation_euler_z_up = (rot*R.from_euler('xyz', human_orientation_euler, degrees=False)).as_euler('xyz', degrees=False)
     human_orientation_euler = human_orientation_euler_z_up
@@ -61,7 +61,7 @@ def get_mujoco_data(data_name):
     for i in range(human_pose_euler_interp.shape[1]):
         for j in range(3):
             human_pose_euler_interp[:, i, j] = butterworth_filter(human_pose_euler_interp[:, i, j], cutoff=1, fs=desired_fps)
-    # human_pose_euler = human_pose_euler_interp
+    human_pose_euler = human_pose_euler_interp
 
     # 计算角速度
     human_pose_angular_velocity = np.gradient(human_pose_euler, axis=0) * desired_fps
@@ -73,6 +73,7 @@ def get_mujoco_data(data_name):
 
     output = {
         'fps': desired_fps,
+        'frame_num': frame_num,
         'human_root_position': human_root_position,
         'human_root_velocity': human_root_velocity,
         'human_root_acceleration': human_root_acceleration,
@@ -80,10 +81,12 @@ def get_mujoco_data(data_name):
         'human_pose_angular_velocity': human_pose_angular_velocity,
         'human_pose_angular_acceleration': human_pose_angular_acceleration
     }
+
+    print(f'finsl root position (chair place): {human_root_position[-1]}')
     return output
 
 
-def plot(data: dict):
+def plot_mujoco_data(data: dict):
     human_root_position = data['human_root_position']
     human_root_velocity = data['human_root_velocity']
     human_root_acceleration = data['human_root_acceleration']
@@ -116,22 +119,77 @@ def plot(data: dict):
     plt.close()
 
 
-# # 可视化模型
-# viewer.launch(model, data)
-# exit(0)
+def set_mujoco_data(data, motion_data, frame_num, best_z_offset=0, static=False):
+    human_root_position = motion_data['human_root_position']  # (frame_num, 3)
+    human_root_velocity = motion_data['human_root_velocity']  # (frame_num, 3)
+    human_root_acceleration = motion_data['human_root_acceleration']  # (frame_num, 3)
+    human_pose_euler = motion_data['human_pose_euler']  # (frame_num, 22, 3)
+    human_pose_angular_velocity = motion_data['human_pose_angular_velocity']  # (frame_num, 22, 3)
+    human_pose_angular_acceleration = motion_data['human_pose_angular_acceleration']  # (frame_num, 22, 3)
+
+    # 位置
+    data.qpos[0:3] = human_root_position[frame_num, 0:3].copy()
+    data.qpos[2] += best_z_offset
+    if not static:
+        data.qvel[0:3] = human_root_velocity[frame_num, 0:3].copy()
+        data.qacc[0:3] = human_root_acceleration[frame_num, 0:3].copy()
+    for j in range(human_pose_euler.shape[1]):  # 0-21
+        # 角度
+        if j == 0:
+            human_quat = R.from_euler('xyz', human_pose_euler[frame_num, j]).as_quat()
+            data.qpos[3:7] = human_quat[[3, 0, 1, 2]].copy()
+        else:
+            data.qpos[4+3*j:4+3*j+3] = human_pose_euler[frame_num, j].copy()
+        if not static:
+            # 角速度
+            data.qvel[3+3*j:3+3*j+3] = human_pose_angular_velocity[frame_num, j].copy()
+            # 角加速度
+            data.qacc[3+3*j:3+3*j+3] = human_pose_angular_acceleration[frame_num, j].copy()
+
+
+def get_best_z_offset(model, motion_data, plot=False):
+    data = mujoco.MjData(model)
+
+    min_offset = -0.337
+    max_offset = -0.324
+    offset_list = np.linspace(min_offset, max_offset, 10000)
+    root_extra_force = []
+    for i in offset_list:
+        set_mujoco_data(data, motion_data, 0, 0, static=True)
+        data.qpos[2] += i
+        mujoco.mj_inverse(model, data)
+        root_extra_force.append(data.qfrc_inverse[2].copy())  # (frame_num, )
+
+    min_extra_force = np.min(np.abs(root_extra_force))
+    best_offset = offset_list[np.argmin(np.abs(root_extra_force))]
+    print(f'Best offset {best_offset:.4f}mm.\n force = {min_extra_force:.4f} N')
+
+    if plot:
+        plt.plot(offset_list, root_extra_force)
+        plt.axvline(x=best_offset, color='red', linestyle='--')
+        weight = model.body_subtreemass[1]*np.linalg.norm(model.opt.gravity)
+        plt.axhline(y=weight, color='green', linestyle='--')
+        plt.xlabel('x offset (m)')
+        plt.ylabel('z extra force (N)')
+        plt.title(f'Best offset {best_offset:.4f}mm.\n force = {min_extra_force:.4f} N')
+        plt.minorticks_on()
+        plt.savefig('./imgs/root_extra_z_force.png')
+        plt.close()
+
+    return best_offset
+
 
 def get_torque(motion_data: dict):
     # 从XML字符串创建MjModel对象
     model = mujoco.MjModel.from_xml_path('../humanoid/smplx_humanoid-only_body.xml')
-    model.opt.gravity = (0, -9.8, 0)
     # model.opt.timestep = 1/FPS
     print(f'default timestep: {model.opt.timestep}')
-    # model.opt.disableflags = 1 << 4 + 1 << 1  # disable contact constraints
+    model.opt.disableflags = 1 << 4  # disable contact constraints
     # model.opt.integrator = 0  # change integrator to Euler
 
     data = mujoco.MjData(model)
 
-    print([model.body(i).name for i in range(model.ngeom)])
+    print([model.body(i).name for i in range(model.nbody)])
     print(f'Number of geoms in the model: {model.ngeom}')
     print(f'Number of joints in the model: {model.njnt}')
     print(f'Number of degrees of freedom in the model: {model.nv}')
@@ -142,33 +200,12 @@ def get_torque(motion_data: dict):
     print(f'xy shape: {data.xpos.shape}')
 
     mujoco.mj_resetData(model, data)
-
-    human_root_position = motion_data['human_root_position']
-    human_root_velocity = motion_data['human_root_velocity']
-    human_root_acceleration = motion_data['human_root_acceleration']
-    human_pose_euler = motion_data['human_pose_euler']
-    human_pose_angular_velocity = motion_data['human_pose_angular_velocity']
-    human_pose_angular_acceleration = motion_data['human_pose_angular_acceleration']
+    motion_data = get_mujoco_data('seat_5-frame_num_150')
+    best_offset = get_best_z_offset(model, motion_data, plot=True)
 
     torque_est = []
-    for i in range(human_root_position.shape[0]):
-        # 位置
-        data.qpos[0:3] = human_root_position[i, 0:3].copy()
-        # 速度
-        data.qvel[0:3] = human_root_velocity[i, 0:3].copy()
-        # 加速度
-        data.qacc[0:3] = human_root_acceleration[i, 0:3].copy()
-        for j in range(human_pose_euler.shape[1]):  # 0-21
-            # 角度
-            if j == 0:
-                human_quat = R.from_euler('xyz', human_pose_euler[i, j]).as_quat()
-                data.qpos[3:7] = human_quat[[3, 0, 1, 2]].copy()
-            else:
-                data.qpos[4+3*j:4+3*j+3] = human_pose_euler[i, j].copy()
-            # 角速度
-            data.qvel[3+3*j:3+3*j+3] = human_pose_angular_velocity[i, j].copy()
-            # 角加速度
-            data.qacc[3+3*j:3+3*j+3] = human_pose_angular_acceleration[i, j].copy()
+    for i in range(motion_data['frame_num']):
+        set_mujoco_data(data, motion_data, i, best_offset, static=False)
         mujoco.mj_inverse(model, data)
         torque = data.qfrc_inverse.copy()
         torque_est.append(torque)
@@ -178,13 +215,22 @@ def get_torque(motion_data: dict):
 
 
 def print_torque(torque_est):
+    root = torque_est[:, :3]
+    plt.plot(root[:, 0], label='x')
+    plt.plot(root[:, 1], label='y')
+    plt.plot(root[:, 2], label='z')
+    plt.title('Root')
+    plt.legend()
+    plt.savefig('./imgs/torque_root-no_chair.png')
+    plt.close()
+
     torque_left_thigh = torque_est[:, 3+3*1:3+3*2].reshape(-1, 3)
     plt.plot(torque_left_thigh[:, 0], label='x')
     plt.plot(torque_left_thigh[:, 1], label='y')
     plt.plot(torque_left_thigh[:, 2], label='z')
     plt.title('Torque Left Thigh')
     plt.legend()
-    plt.savefig('./imgs/torque_left_thigh.png')
+    plt.savefig('./imgs/torque_left_thigh-no_chair.png')
     plt.close()
 
     torque_right_thigh = torque_est[:, 3+3*5:3+3*6].reshape(-1, 3)
@@ -193,14 +239,14 @@ def print_torque(torque_est):
     plt.plot(torque_right_thigh[:, 2], label='z')
     plt.title('Torque Right Thigh')
     plt.legend()
-    plt.savefig('./imgs/torque_right_thigh.png')
+    plt.savefig('./imgs/torque_right_thigh-no_chair.png')
     plt.close()
 
 
 def main():
     data_name = 'seat_5-frame_num_150'
     data = get_mujoco_data(data_name)
-    plot(data)
+    plot_mujoco_data(data)
     torque_est = get_torque(data)
     print_torque(torque_est)
     print('Done')
