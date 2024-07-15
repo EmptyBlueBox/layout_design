@@ -183,7 +183,7 @@ def mechanical_energy_mujoco(data_name=None):
     for i in range(motion_data['frame_num']):
         mujoco.mj_resetData(model, data)
         set_mujoco_data(data, motion_data, i, static=False)
-        # data.qvel = 0  # 为什么加上速度, 动能会非常高
+        # data.qvel = 0  # 为什么加上速度, 因为加速度会变大很多, 从而动能会非常高
         mujoco.mj_step(model, data)
         potential_energy.append(data.energy[0])
         kinetic_energy.append(data.energy[1])

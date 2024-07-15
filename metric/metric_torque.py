@@ -192,7 +192,6 @@ def get_best_z_offset(model, motion_data, plot=False):
 def get_torque(motion_data: dict):
     # 从XML字符串创建MjModel对象
     model = mujoco.MjModel.from_xml_path('../humanoid/smplx_humanoid-only_body.xml')
-    # model.opt.timestep = 1/FPS
     print(f'default timestep: {model.opt.timestep}')
     model.opt.disableflags = 1 << 4  # disable contact constraints
     # model.opt.integrator = 0  # change integrator to Euler
@@ -200,17 +199,16 @@ def get_torque(motion_data: dict):
     data = mujoco.MjData(model)
 
     print([model.body(i).name for i in range(model.nbody)])
-    print(f'Number of geoms in the model: {model.ngeom}')
-    print(f'Number of joints in the model: {model.njnt}')
-    print(f'Number of degrees of freedom in the model: {model.nv}')
-    print(f'Number of bodies in the model: {model.nbody}')
-    print(f'q shape: {data.qpos.shape}')
-    print(f'w shape: {data.qvel.shape}')
-    print(f'a shape: {data.qacc.shape}')
-    print(f'xy shape: {data.xpos.shape}')
+    # print(f'Number of geoms in the model: {model.ngeom}')
+    # print(f'Number of joints in the model: {model.njnt}')
+    # print(f'Number of degrees of freedom in the model: {model.nv}')
+    # print(f'Number of bodies in the model: {model.nbody}')
+    # print(f'q shape: {data.qpos.shape}')
+    # print(f'w shape: {data.qvel.shape}')
+    # print(f'a shape: {data.qacc.shape}')
+    # print(f'xy shape: {data.xpos.shape}')
 
     mujoco.mj_resetData(model, data)
-    motion_data = get_mujoco_data('seat_5-frame_num_150')
     best_offset = get_best_z_offset(model, motion_data, plot=True)
 
     torque_est = []
@@ -240,7 +238,7 @@ def print_torque(torque_est):
     plt.plot(torque_left_thigh[:, 2], label='z')
     plt.title('Torque Left Thigh')
     plt.legend()
-    plt.savefig('./imgs/torque_left_thigh-no_chair.png')
+    plt.savefig('./imgs/torque_left_thigh.png')
     plt.close()
 
     torque_right_thigh = torque_est[:, 3+3*5:3+3*6].reshape(-1, 3)
@@ -249,12 +247,12 @@ def print_torque(torque_est):
     plt.plot(torque_right_thigh[:, 2], label='z')
     plt.title('Torque Right Thigh')
     plt.legend()
-    plt.savefig('./imgs/torque_right_thigh-no_chair.png')
+    plt.savefig('./imgs/torque_right_thigh.png')
     plt.close()
 
 
 def main():
-    data_name = 'seat_1-frame_num_150'
+    data_name = 'seat_5-frame_num_150'
     data = get_mujoco_data(data_name)
     plot_mujoco_data(data)
     torque_est = get_torque(data)
