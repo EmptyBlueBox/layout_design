@@ -12,7 +12,7 @@ desired_fps = 30
 smplx2mujoco = [0, 1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 12, 15, 13, 16, 18, 20, 14, 17, 19, 21]
 
 
-def get_mujoco_data(data_name):
+def get_mujoco_data(data_name, _cutoff=1):
     # 读取human_params数据
     DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/{data_name}'
     human_params = pickle.load(open(f'{DATA_FOLDER}/human-params.pkl', 'rb'))
@@ -25,7 +25,7 @@ def get_mujoco_data(data_name):
     xf = human_root_position
     human_root_position_interp = np.array([np.interp(x, xp, xf[:, 0]), np.interp(x, xp, xf[:, 1]), np.interp(x, xp, xf[:, 2])]).T
     for i in range(3):
-        human_root_position_interp[:, i] = butterworth_filter(human_root_position_interp[:, i], cutoff=1, fs=desired_fps)
+        human_root_position_interp[:, i] = butterworth_filter(human_root_position_interp[:, i], cutoff=_cutoff, fs=desired_fps)
     human_root_position = human_root_position_interp
     human_root_position = human_root_position[:, [0, 2, 1]]  # 转换为 Mujoco 的坐标系, z up
     human_root_position[:, 1] *= -1  # y轴取反, 因为旋转后的y是之前的-z
@@ -60,7 +60,7 @@ def get_mujoco_data(data_name):
         human_pose_euler_interp[:, i] = slerp(x).as_euler('xyz', degrees=False)
     for i in range(human_pose_euler_interp.shape[1]):
         for j in range(3):
-            human_pose_euler_interp[:, i, j] = butterworth_filter(human_pose_euler_interp[:, i, j], cutoff=1, fs=desired_fps)
+            human_pose_euler_interp[:, i, j] = butterworth_filter(human_pose_euler_interp[:, i, j], cutoff=_cutoff, fs=desired_fps)
     human_pose_euler = human_pose_euler_interp
 
     # 计算角速度
@@ -118,6 +118,14 @@ def plot_mujoco_data(data: dict):
     plt.savefig('./imgs/human_angular_acceleration-left_thigh.png')
     plt.close()
 
+    plt.plot(np.max(human_pose_angular_acceleration[:, :, 0], axis=1), label='x')
+    plt.plot(np.max(human_pose_angular_acceleration[:, :, 1], axis=1), label='y')
+    plt.plot(np.max(human_pose_angular_acceleration[:, :, 2], axis=1), label='z')
+    plt.title('Human MAX Angular Acceleration')
+    plt.legend()
+    plt.savefig('./imgs/human_max_angular_acceleration.png')
+    plt.close()
+
 
 def set_mujoco_data(data, motion_data, frame_num, best_z_offset=0, static=False):
     human_root_position = motion_data['human_root_position']  # (frame_num, 3)
@@ -148,9 +156,10 @@ def set_mujoco_data(data, motion_data, frame_num, best_z_offset=0, static=False)
 
 
 def get_best_z_offset(model, motion_data, plot=False):
+    model.opt.disableflags = 0  # enable contact constraints
     data = mujoco.MjData(model)
 
-    min_offset = -0.337
+    min_offset = -0.34
     max_offset = -0.324
     offset_list = np.linspace(min_offset, max_offset, 10000)
     root_extra_force = []
@@ -162,20 +171,21 @@ def get_best_z_offset(model, motion_data, plot=False):
 
     min_extra_force = np.min(np.abs(root_extra_force))
     best_offset = offset_list[np.argmin(np.abs(root_extra_force))]
-    print(f'Best offset {best_offset:.4f}mm.\n force = {min_extra_force:.4f} N')
+    print(f'Best offset: {best_offset:.4f} mm, force: {min_extra_force:.4f} N')
 
     if plot:
         plt.plot(offset_list, root_extra_force)
         plt.axvline(x=best_offset, color='red', linestyle='--')
         weight = model.body_subtreemass[1]*np.linalg.norm(model.opt.gravity)
         plt.axhline(y=weight, color='green', linestyle='--')
-        plt.xlabel('x offset (m)')
+        plt.xlabel('z offset (m)')
         plt.ylabel('z extra force (N)')
         plt.title(f'Best offset {best_offset:.4f}mm.\n force = {min_extra_force:.4f} N')
         plt.minorticks_on()
         plt.savefig('./imgs/root_extra_z_force.png')
         plt.close()
 
+    model.opt.disableflags = 1 << 4  # disable contact constraints
     return best_offset
 
 
@@ -244,7 +254,7 @@ def print_torque(torque_est):
 
 
 def main():
-    data_name = 'seat_5-frame_num_150'
+    data_name = 'seat_1-frame_num_150'
     data = get_mujoco_data(data_name)
     plot_mujoco_data(data)
     torque_est = get_torque(data)

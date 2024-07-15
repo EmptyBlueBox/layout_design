@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 model = mujoco.MjModel.from_xml_path('../humanoid/smplx_humanoid-only_body.xml')
 data = mujoco.MjData(model)
 
-data_name = 'seat_5-frame_num_150'
+data_name = 'seat_1-frame_num_150'
 motion_data = get_mujoco_data(data_name)
 fps = motion_data['fps']
 total_frame_num = motion_data['frame_num']
@@ -36,7 +36,7 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         mujoco.mj_step(model, data)
 
         set_mujoco_data(data, motion_data, frame_num, best_offset)
-        set_mujoco_data(data, motion_data, 23, best_offset)
+        set_mujoco_data(data, motion_data, 38, best_offset)
 
         viewer.sync()
 

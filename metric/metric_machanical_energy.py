@@ -5,6 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation as R
 from utils.data_utils import butterworth_filter
+import mujoco
+from metric.metric_torque import get_mujoco_data, set_mujoco_data, get_best_z_offset
 
 Head = 8.23
 Thorax = 18.56
@@ -151,9 +153,9 @@ def mechanical_energy_vanilla(human_params, FPS=30, data_name=None):
         'potential_energy': potential_energy,
         'translational_energy': translational_energy,
         'rotational_energy': rotational_energy,
-        'filtered_kinetic_energy': butterworth_filter(translational_energy + rotational_energy),
+        'filtered_kinetic_energy': butterworth_filter(translational_energy + rotational_energy, 5),
         'mechanical_energy': mechanical_energy,  # 'energy': 'potential_energy + kinetic_energy + rotational_energy
-        'filtered_mechanical_energy': butterworth_filter(mechanical_energy),
+        'filtered_mechanical_energy': butterworth_filter(mechanical_energy, 5),
         'power': power,
         'velocity': velocity,
         'angular_velocity': angular_velocity,
@@ -163,57 +165,97 @@ def mechanical_energy_vanilla(human_params, FPS=30, data_name=None):
     return output
 
 
-def plot_energy(data: list):
-    for data_entry in data:
-        # 绘制能量
-        plt.figure()
-        plt.plot(data_entry['potential_energy'], label='potential energy')
-        plt.plot(data_entry['translational_energy'], label='translational energy')
-        plt.plot(data_entry['rotational_energy'], label='rotational energy')
-        plt.legend()
-        plt.xlabel('frame')
-        plt.ylabel('energy (J)')
-        plt.title(f'Energy of {data_entry["data_name"]}')
-        DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/{data_entry["data_name"]}'
-        plt.savefig(f'{DATA_FOLDER}/{data_entry["data_name"]}-energy.png')
-        plt.close()
+def mechanical_energy_mujoco(data_name=None):
+    model = mujoco.MjModel.from_xml_path('../humanoid/smplx_humanoid-only_body.xml')
+    print(f'default timestep: {model.opt.timestep}')
+    model.opt.timestep = 1e-4
+    model.opt.disableflags = 1 << 4  # disable contact constraints
+    # model.opt.integrator = 0  # change integrator to Euler
 
-        # 绘制动能
-        plt.figure()
-        plt.plot(data_entry['translational_energy'], label='translational energy')
-        plt.plot(data_entry['rotational_energy'], label='rotational energy')
-        plt.legend()
-        plt.xlabel('frame')
-        plt.ylabel('energy (J)')
-        plt.title(f'Energy of {data_entry["data_name"]}')
-        DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/{data_entry["data_name"]}'
-        plt.savefig(f'{DATA_FOLDER}/{data_entry["data_name"]}-kinetic-energy.png')
-        plt.close()
+    data = mujoco.MjData(model)
 
-        # 绘制角速度
-        plt.figure()
-        plt.figure(figsize=(20, 10))
-        for i in range(1, 22):
-            plt.plot(data_entry['filtered_angular_velocity'][:, i], label=f'angular velocity: {i}')
-        plt.legend()
-        plt.xlabel('frame')
-        plt.ylabel('-1')
-        plt.title(f'Angular velocity of {data_entry["data_name"]}')
-        DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/{data_entry["data_name"]}'
-        plt.savefig(f'{DATA_FOLDER}/{data_entry["data_name"]}-angular-velocity.png')
-        plt.close()
+    motion_data = get_mujoco_data(data_name, 5)
+    motion_data['human_root_position'] -= motion_data['human_root_position'][0]  # 重力势能一样
 
-    # 绘制滤波后的机械能
-    plt.figure()
-    for data_entry in data:
-        plt.plot(data_entry['filtered_mechanical_energy'], label=f'Filtered mechanical energy of {data_entry["data_name"]}')
-    plt.legend()
-    plt.xlabel('frame')
-    plt.ylabel('energy (J)')
-    plt.title(f'Energy of {len(data)} data')
-    DATA_FOLDER = '/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla'
-    plt.savefig(f'{DATA_FOLDER}/{len(data)}-filtered-mechanical-energy.png')
-    plt.close()
+    potential_energy = []
+    kinetic_energy = []
+    mujoco.mj_resetData(model, data)
+    for i in range(motion_data['frame_num']):
+        mujoco.mj_resetData(model, data)
+        set_mujoco_data(data, motion_data, i, static=False)
+        # data.qvel = 0  # 为什么加上速度, 动能会非常高
+        mujoco.mj_step(model, data)
+        potential_energy.append(data.energy[0])
+        kinetic_energy.append(data.energy[1])
+    potential_energy = np.array(potential_energy)
+    kinetic_energy = np.array(kinetic_energy)  # (150,)
+    mechanical_energy = potential_energy + kinetic_energy  # (150,)
+    power = np.gradient(mechanical_energy)  # (150,)
+
+    output = {
+        'data_name': data_name,
+        'potential_energy': potential_energy,
+        'translational_energy': kinetic_energy,
+        'rotational_energy': kinetic_energy,
+        'filtered_kinetic_energy': butterworth_filter(kinetic_energy, 5),
+        'mechanical_energy': mechanical_energy,  # 'energy': 'potential_energy + kinetic_energy + rotational_energy
+        'filtered_mechanical_energy': butterworth_filter(mechanical_energy, 5),
+        'power': power,
+    }
+    return output
+
+
+def plot_energy(data: list, data_type: str):
+    # for data_entry in data:
+    #     # 绘制能量
+    #     plt.figure()
+    #     plt.plot(data_entry['potential_energy'], label='potential energy')
+    #     plt.plot(data_entry['translational_energy'], label='translational energy')
+    #     plt.plot(data_entry['rotational_energy'], label='rotational energy')
+    #     plt.legend()
+    #     plt.xlabel('frame')
+    #     plt.ylabel('energy (J)')
+    #     plt.title(f'Energy of {data_entry["data_name"]}')
+    #     DATA_FOLDER = './imgs'
+    #     # plt.savefig(f'{DATA_FOLDER}/{data_entry["data_name"]}-energy.png')
+    #     plt.close()
+
+    #     # 绘制动能
+    #     plt.figure()
+    #     plt.plot(data_entry['translational_energy'], label='translational energy')
+    #     plt.plot(data_entry['rotational_energy'], label='rotational energy')
+    #     plt.legend()
+    #     plt.xlabel('frame')
+    #     plt.ylabel('energy (J)')
+    #     plt.title(f'Energy of {data_entry["data_name"]}')
+    #     DATA_FOLDER = './imgs'
+    #     # plt.savefig(f'{DATA_FOLDER}/{data_entry["data_name"]}-kinetic-energy.png')
+    #     plt.close()
+
+    #     # 绘制角速度
+    #     plt.figure()
+    #     plt.figure(figsize=(20, 10))
+    #     for i in range(1, 22):
+    #         plt.plot(data_entry['filtered_angular_velocity'][:, i], label=f'angular velocity: {i}')
+    #     plt.legend()
+    #     plt.xlabel('frame')
+    #     plt.ylabel('-1')
+    #     plt.title(f'Angular velocity of {data_entry["data_name"]}')
+    #     DATA_FOLDER = './imgs'
+    #     plt.savefig(f'{DATA_FOLDER}/{data_entry["data_name"]}-angular-velocity.png')
+    #     plt.close()
+
+    # # 绘制滤波后的机械能
+    # plt.figure()
+    # for data_entry in data:
+    #     plt.plot(data_entry['filtered_mechanical_energy'], label=f'Filtered mechanical energy of {data_entry["data_name"]}')
+    # plt.legend()
+    # plt.xlabel('frame')
+    # plt.ylabel('energy (J)')
+    # plt.title(f'Energy of {len(data)} data')
+    # DATA_FOLDER = './imgs'
+    # plt.savefig(f'{DATA_FOLDER}/{len(data)}-filtered-mechanical-energy.png')
+    # plt.close()
 
     # 绘制滤波后的动能
     plt.figure()
@@ -222,17 +264,22 @@ def plot_energy(data: list):
     plt.legend()
     plt.xlabel('frame')
     plt.ylabel('energy (J)')
-    plt.title(f'Filtered kinetic energy of {len(data)} data')
-    plt.savefig(f'{DATA_FOLDER}/{len(data)}-filtered-kinetic-energy.png')
+    plt.title(f'Filtered kinetic energy of {len(data)} vanilla data')
+    plt.savefig(f'./imgs/{len(data)}-filtered-kinetic_energy-{data_type}.png')
     plt.close()
 
 
 if __name__ == '__main__':
     DATA_NAME = ['seat_1-frame_num_150', 'seat_5-frame_num_150']
-    output = []
+    # DATA_NAME = ['seat_5-frame_num_150']
+    output_1 = []
+    output_2 = []
     for data_name in DATA_NAME:
         DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/{data_name}'
         human_params = pickle.load(open(f'{DATA_FOLDER}/human-params.pkl', 'rb'))
         energy_entery = mechanical_energy_vanilla(human_params, FPS=30, data_name=data_name)
-        output.append(energy_entery)
-    plot_energy(output)
+        output_1.append(energy_entery)
+        energy_entery = mechanical_energy_mujoco(data_name=data_name)
+        output_2.append(energy_entery)
+    plot_energy(output_1, 'vanilla')
+    plot_energy(output_2, 'mujoco')
