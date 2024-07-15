@@ -9,7 +9,7 @@ import trimesh
 import pickle
 from utils.mesh_utils import compute_vertex_normals
 from metric.metric_machanical_energy import mechanical_energy_vanilla, mechanical_energy_mujoco
-from metric.metric_torque import get_mujoco_data, get_torque
+from metric.metric_torque import get_mujoco_data, get_torque, torque_power
 
 DATA_NAME = 'seat_5-frame_num_150'
 DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/{DATA_NAME}'
@@ -81,8 +81,9 @@ def write_rerun(human: dict, object: dict):
     # 计算功率
     energy_1 = mechanical_energy_vanilla(human_params=human, FPS=30, data_name=DATA_NAME)
     energy_2 = mechanical_energy_mujoco(data_name=DATA_NAME)
-    torque = get_torque(get_mujoco_data(DATA_NAME))
-    torque_right_thigh = torque[:, 3+3*5:3+3*6].reshape(-1, 3)
+    power_torque = torque_power(data_name=DATA_NAME)
+    torque = get_torque(DATA_NAME)
+    torque_right_thigh = torque[:, 6]  # 右大腿
 
     # 一个frame中遍历所有object: 人物, 椅子, 桌子等
     for i in range(FRAME_NUM):
@@ -115,11 +116,10 @@ def write_rerun(human: dict, object: dict):
 
         # rr.log('joint', rr.Points3D(human['joints'][i]))
 
-        rr.log('data/filtered_kinetic_energy-vanilla', rr.Scalar(energy_1['filtered_kinetic_energy'][i]))  # 画能量曲线
-        rr.log('data/filtered_kinetic_energy-mujoco', rr.Scalar(energy_2['filtered_kinetic_energy'][i]))  # 画能量曲线
-        rr.log('data/torque_x', rr.Scalar(torque_right_thigh[i, 0]))  # print torque
-        rr.log('data/torque_y', rr.Scalar(torque_right_thigh[i, 1]))  # print torque
-        rr.log('data/torque_z', rr.Scalar(torque_right_thigh[i, 2]))  # print torque
+        # rr.log('data/filtered_kinetic_energy-vanilla', rr.Scalar(energy_1['filtered_kinetic_energy'][i]))  # 画能量曲线
+        # rr.log('data/filtered_kinetic_energy-mujoco', rr.Scalar(energy_2['filtered_kinetic_energy'][i]))  # 画能量曲线
+        rr.log('data/filtered_kinetic_energy-torque', rr.Scalar(power_torque[i]))  # 画能量曲线
+        # rr.log('data/torque-right_Thigh', rr.Scalar(np.linalg.norm(torque_right_thigh[i])))  # print torque
 
         # rr.log('filtered_mechanical_energy', rr.Scalar(energy['filtered_mechanical_energy'][i]))
         # rr.log('left_Thigh', rr.Scalar(energy['filtered_angular_velocity'][i, 1]))  # 画转速曲线

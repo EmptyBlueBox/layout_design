@@ -28,13 +28,13 @@ human_pose_euler = motion_data['human_pose_euler']  # (frame_num, 22, 3)
 human_pose_angular_velocity = motion_data['human_pose_angular_velocity']  # (frame_num, 22, 3)
 human_pose_angular_acceleration = motion_data['human_pose_angular_acceleration']  # (frame_num, 22, 3)
 
-torque_estimation = get_torque(motion_data)
+torque_estimation = get_torque(data_name)
 
 
 def controller_torque(model, data):
     fps = motion_data['fps']
-    index = int(data.time * fps)  # frame_num   
-    data.ctrl = torque_estimation[index, 6:]
+    index = int(data.time * fps)  # frame_num
+    data.ctrl = torque_estimation[index, 2:]
     return
 
 

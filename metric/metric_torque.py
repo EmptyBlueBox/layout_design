@@ -189,7 +189,8 @@ def get_best_z_offset(model, motion_data, plot=False):
     return best_offset
 
 
-def get_torque(motion_data: dict):
+def get_torque(motion_name: str):
+    motion_data = get_mujoco_data(motion_name)
     # 从XML字符串创建MjModel对象
     model = mujoco.MjModel.from_xml_path('../humanoid/smplx_humanoid-only_body.xml')
     print(f'default timestep: {model.opt.timestep}')
@@ -217,13 +218,14 @@ def get_torque(motion_data: dict):
         mujoco.mj_inverse(model, data)
         torque = data.qfrc_inverse.copy()
         torque_est.append(torque)
-    torque_est = np.array(torque_est)
+    torque_est = np.array(torque_est).reshape(-1, 23, 3)
     print(f'torque_est shape: {torque_est.shape}')
+    model.opt.disableflags = 0  # enable contact constraints
     return torque_est
 
 
-def print_torque(torque_est):
-    root = torque_est[:, :3]
+def plot_torque(torque_est):
+    root = torque_est[:, 0]
     plt.plot(root[:, 0], label='x')
     plt.plot(root[:, 1], label='y')
     plt.plot(root[:, 2], label='z')
@@ -232,7 +234,7 @@ def print_torque(torque_est):
     plt.savefig('./imgs/torque_root-no_chair.png')
     plt.close()
 
-    torque_left_thigh = torque_est[:, 3+3*1:3+3*2].reshape(-1, 3)
+    torque_left_thigh = torque_est[:, 2]
     plt.plot(torque_left_thigh[:, 0], label='x')
     plt.plot(torque_left_thigh[:, 1], label='y')
     plt.plot(torque_left_thigh[:, 2], label='z')
@@ -241,7 +243,7 @@ def print_torque(torque_est):
     plt.savefig('./imgs/torque_left_thigh.png')
     plt.close()
 
-    torque_right_thigh = torque_est[:, 3+3*5:3+3*6].reshape(-1, 3)
+    torque_right_thigh = torque_est[:, 6]
     plt.plot(torque_right_thigh[:, 0], label='x')
     plt.plot(torque_right_thigh[:, 1], label='y')
     plt.plot(torque_right_thigh[:, 2], label='z')
@@ -251,12 +253,36 @@ def print_torque(torque_est):
     plt.close()
 
 
+def torque_power(data_name):
+    torque_est = get_torque(data_name)[:, 2:]  # 删除root六个自由度的力矩
+    motion_data = get_mujoco_data(data_name)
+    displacement = np.gradient(motion_data['human_pose_euler'], axis=0)[:, 1:]  # 删除root的角度力矩
+    print(f'displacement shape: {displacement.shape}')
+    print(f'torque_est shape: {torque_est.shape}')
+    power = np.sum(torque_est*displacement, axis=(1, 2))
+    return power
+
+
+def plot_power(energy):
+    plt.plot(energy)
+    plt.title('Torque Energy')
+    plt.xlabel('frame')
+    plt.ylabel('energy/J')
+    plt.savefig('./imgs/torque_energy.png')
+    plt.close()
+
+
 def main():
     data_name = 'seat_5-frame_num_150'
-    data = get_mujoco_data(data_name)
-    plot_mujoco_data(data)
-    torque_est = get_torque(data)
-    print_torque(torque_est)
+
+    # data = get_mujoco_data(data_name)
+    # plot_mujoco_data(data)
+
+    # torque_est = get_torque(data_name)
+    # plot_torque(torque_est)
+
+    energy = torque_power(data_name)
+    plot_power(energy)
     print('Done')
 
 
