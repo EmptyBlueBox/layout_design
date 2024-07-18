@@ -26,8 +26,8 @@ TRUMANS_PATH = '/Users/emptyblue/Documents/Research/layout_design/dataset/TRUMAN
 device = setup_device()
 
 VISUALIZATION = True  # 是否可视化
-SAVE = True  # 是否保存 human 和 object 的数据, 如果保存, 那么就是从末端开始选一定长度的帧, 否则从整体均匀选一定长度的帧
-OBJECT_ONLY_CHAIR = True  # 是否只选择椅子
+SAVE = True  # 是否保存 human 和 object 的数据, 如果保存, 那么就是从末端开始往前选一定长度的帧, 否则从整体均匀选一定长度的帧
+OBJECT_ONLY = True  # 是否只选择物体
 
 SEG_NUM = 1  # 可视化哪个seg
 SET_FRAME_NUM = 50  # 一个seg中试图选择的帧数
@@ -37,6 +37,7 @@ END_RATIO = 0.455  # 选择停止的帧数比例, 如果是0.48, 那么就是到
 # end_frame_ratio = 1.  # 选择停止的帧数比例
 
 SAVE_PATH = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/seat_{SEG_NUM}-frame_num_{SET_FRAME_NUM}'
+SAVE_PATH = f'/Users/emptyblue/Documents/Research/layout_design/dataset/data_pair-hand_picked/seat_{SEG_NUM}-frame_num_{SET_FRAME_NUM}'
 if not os.path.exists(SAVE_PATH):
     os.makedirs(SAVE_PATH)
 
@@ -77,7 +78,7 @@ def load_human():
                                ext='npz',
                                batch_size=max_frame_num)
 
-    smpl_params = {
+    human_params = {
         'poses': np.load(TRUMANS_PATH+'/human_pose.npy')[selected_frame].reshape(-1, 21, 3),  # (max_frame_num, 21, 3)
         'orientation': np.load(TRUMANS_PATH+'/human_orient.npy')[selected_frame].reshape(-1, 3),  # (max_frame_num, 3)
         'translation': np.load(TRUMANS_PATH+'/human_transl.npy')[selected_frame].reshape(-1, 3),  # (max_frame_num, 3)
@@ -87,9 +88,9 @@ def load_human():
     # print(f'smpl_params.orientation: {smpl_params["orientation"].shape}')
     # print(f'smpl_params.translation: {smpl_params["translation"].shape}')
 
-    output = human_model(body_pose=torch.tensor(smpl_params['poses'], dtype=torch.float32),
-                         global_orient=torch.tensor(smpl_params['orientation'], dtype=torch.float32),
-                         transl=torch.tensor(smpl_params['translation'], dtype=torch.float32))
+    output = human_model(body_pose=torch.tensor(human_params['poses'], dtype=torch.float32),
+                         global_orient=torch.tensor(human_params['orientation'], dtype=torch.float32),
+                         transl=torch.tensor(human_params['translation'], dtype=torch.float32))
     vertices = output.vertices.detach().cpu().numpy()
     faces = human_model.faces
 
@@ -102,11 +103,11 @@ def load_human():
     # print(f'body_model.faces.shape: {human_model.faces.shape}')
     # print(f'vertex_normals.shape: {vertex_normals.shape}')
 
-    smpl_params['vertices'] = vertices
-    smpl_params['faces'] = faces
-    smpl_params['vertex_normals'] = vertex_normals
+    human_params['vertices'] = vertices
+    human_params['faces'] = faces
+    human_params['vertex_normals'] = vertex_normals
 
-    return smpl_params
+    return human_params
 
 
 def load_object():
@@ -114,7 +115,7 @@ def load_object():
     seg_name = seg_name_list[seg_begin]
     object: dict = numpy.load(TRUMANS_PATH+f'/Object_all/Object_pose/{seg_name}.npy', allow_pickle=True).item()  # 这是一个被{}包起来的字典, 要做一下解包 .item()
     # 只要名字里有 chair 的
-    if OBJECT_ONLY_CHAIR:
+    if OBJECT_ONLY:
         object = {key: object[key] for key in object.keys() if 'chair' in key}
 
     for key in object.keys():
@@ -212,7 +213,7 @@ def write_rerun(human: dict, object: dict, scene: dict):
     print('write rerun done!\n')
 
 
-def save_rerun(human: dict, object: dict, scene: dict):
+def save_data(human: dict, object: dict, scene: dict):
     print('saving human and object mesh...')
     print(f'human vertices: {human["vertices"][0].shape[0]}, faces: {human["faces"].shape[0]}')
     for key in object.keys():
@@ -245,10 +246,11 @@ def main():
     human = load_human()
     object = load_object()
     scene = load_scene()
+    scene = None  # 不可视化 scene
     if VISUALIZATION:
         write_rerun(human=human, object=object, scene=scene)
     if SAVE:
-        save_rerun(human=human, object=object, scene=scene)
+        save_data(human=human, object=object, scene=scene)
 
 
 if __name__ == '__main__':
