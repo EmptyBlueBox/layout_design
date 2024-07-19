@@ -12,8 +12,23 @@ import pickle
 from utils.mesh_utils import compute_vertex_normals
 
 
+SEG_NUM = 11  # 可视化哪个seg, 从0开始
+SET_FRAME_NUM = 300  # 一个seg中试图选择的帧数
+START_RATIO = 0  # 选择开始的帧数比例, 如果是0.44, 那么就是从44%的位置开始, 在 SAVE=True 的情况下, 是没用的
+END_RATIO = 73.92/75.156  # 选择停止的帧数比例, 如果是0.48, 那么就是到48%的位置结束, 在 SAVE=True 的情况下, 从这个地方往前选 SET_FRAME_NUM 长度的帧
+
+VISUALIZATION = True  # 是否可视化
+SAVE = 1  # 是否保存 human 和 object 的数据, 如果保存, 那么就是从末端开始往前选一定长度的帧, 否则从整体均匀选一定长度的帧
+
+ONE_OBJECT_ONLY = 1  # 是否只选择 OBJECT_NAME_IF_SAVE 物体
+# OBJECT_NAME_IF_SAVE = 'fridge'  # 只使用名字里有 'chair' 的 object
+# OBJECT_NAME_IF_SAVE = 'drawer'
+# OBJECT_NAME_IF_SAVE = 'cabinet'
+# OBJECT_NAME_IF_SAVE = 'chair'
+OBJECT_NAME_IF_SAVE = 'oven'
+
+
 def setup_device():
-    """设置计算设备"""
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
         torch.cuda.set_device(device)
@@ -25,23 +40,6 @@ def setup_device():
 TRUMANS_PATH = '/Users/emptyblue/Documents/Research/layout_design/dataset/TRUMANS'
 device = setup_device()
 
-VISUALIZATION = True  # 是否可视化
-SAVE = True  # 是否保存 human 和 object 的数据, 如果保存, 那么就是从末端开始往前选一定长度的帧, 否则从整体均匀选一定长度的帧
-OBJECT_ONLY = True  # 是否只选择物体
-
-SEG_NUM = 1  # 可视化哪个seg
-SET_FRAME_NUM = 50  # 一个seg中试图选择的帧数
-START_RATIO = 0.0  # 选择开始的帧数比例, 如果是0.44, 那么就是从44%的位置开始, 在 SAVE=True 的情况下, 是没用的
-END_RATIO = 0.455  # 选择停止的帧数比例, 如果是0.48, 那么就是到48%的位置结束, 在 SAVE=True 的情况下, 从这个地方往前选 SET_FRAME_NUM 长度的帧
-# start_frame_ratio = 0.  # 选择开始的帧数比例
-# end_frame_ratio = 1.  # 选择停止的帧数比例
-
-SAVE_PATH = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/seat_{SEG_NUM}-frame_num_{SET_FRAME_NUM}'
-SAVE_PATH = f'/Users/emptyblue/Documents/Research/layout_design/dataset/data_pair-hand_picked/seat_{SEG_NUM}-frame_num_{SET_FRAME_NUM}'
-if not os.path.exists(SAVE_PATH):
-    os.makedirs(SAVE_PATH)
-
-
 seg_begin_list = np.load(TRUMANS_PATH+'/seg_begin.npy')
 seg_begin = seg_begin_list[SEG_NUM]  # 当前seg的开始帧
 seg_end = seg_begin_list[SEG_NUM+1]-1 if SEG_NUM+1 < seg_begin_list.shape[0] else len(seg_begin_list)-1  # 当前seg的结束帧
@@ -51,20 +49,25 @@ select_start = int(START_RATIO*seg_end+(1-START_RATIO)*seg_begin)
 select_end = int(END_RATIO*seg_end+(1-END_RATIO)*seg_begin)
 
 if SAVE:  # 需要保存的时候从末端开始选一定长度的帧
-    max_frame_num = min(SET_FRAME_NUM, int(seg_frame_num*END_RATIO))  # 实际的帧数
+    max_frame_num = min(SET_FRAME_NUM, int(seg_frame_num*END_RATIO)+1)  # 实际的帧数
     print(f'max_frame_num: {max_frame_num}')
     selected_frame = np.arange(select_end-max_frame_num+1, select_end+1)
-    frames_per_second = 60
+    frames_per_second = 30
     print(f'frames_per_second: {frames_per_second}')
 else:  # 不需要保存的时候从整体均匀选一定长度的帧
-    max_frame_num = min(SET_FRAME_NUM, int(seg_frame_num*(END_RATIO-START_RATIO)))  # 实际的帧数
+    max_frame_num = min(SET_FRAME_NUM, select_end-select_start+1)  # 实际的帧数
     print(f'max_frame_num: {max_frame_num}')
     selected_frame = np.linspace(select_start,
                                  select_end,
                                  max_frame_num,
                                  dtype=int)
-    frames_per_second = max_frame_num / (seg_frame_num * (END_RATIO - START_RATIO)) * 60
+    frames_per_second = selected_frame.shape[0] / (select_end-select_start+1) * 30
     print(f'frames_per_second: {frames_per_second}')
+
+# SAVE_PATH = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/seat_{SEG_NUM}-frame_num_{SET_FRAME_NUM}'
+SAVE_PATH = f'/Users/emptyblue/Documents/Research/layout_design/dataset/data_pair-hand_picked/seg_{SEG_NUM}-obj_{OBJECT_NAME_IF_SAVE}-end_{END_RATIO:.3f}-len_{max_frame_num}'
+if SAVE and not os.path.exists(SAVE_PATH):
+    os.makedirs(SAVE_PATH)
 
 
 def load_human():
@@ -114,9 +117,12 @@ def load_object():
     seg_name_list = np.load(TRUMANS_PATH+'/seg_name.npy')
     seg_name = seg_name_list[seg_begin]
     object: dict = numpy.load(TRUMANS_PATH+f'/Object_all/Object_pose/{seg_name}.npy', allow_pickle=True).item()  # 这是一个被{}包起来的字典, 要做一下解包 .item()
-    # 只要名字里有 chair 的
-    if OBJECT_ONLY:
-        object = {key: object[key] for key in object.keys() if 'chair' in key}
+
+    print(f'object names: {object.keys()}')
+
+    # 只要名字里有 OBJECT_NAME_IF_SAVE 的
+    if ONE_OBJECT_ONLY:
+        object = {key: object[key] for key in object.keys() if OBJECT_NAME_IF_SAVE in key}
 
     for key in object.keys():
         object[key]['rotation'] = np.array(object[key]['rotation'])[selected_frame-seg_begin]
@@ -163,7 +169,7 @@ def write_rerun(human: dict, object: dict, scene: dict):
     parser = argparse.ArgumentParser(description="Logs rich data using the Rerun SDK.")
     rr.script_add_args(parser)
     args = parser.parse_args()
-    rr.script_setup(args, f'TRUMANS seg: {SEG_NUM}, frame_num: {max_frame_num}')
+    rr.script_setup(args, f'TRUMANS seg: {SEG_NUM}, end: {END_RATIO:.3f}, len: {max_frame_num}')
     rr.log("", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)  # Set an up-axis = +Y
     rr.set_time_seconds("stable_time", 0)
 
@@ -221,7 +227,7 @@ def save_data(human: dict, object: dict, scene: dict):
 
     human_params = {'poses': human['poses'], 'orientation': human['orientation'], 'translation': human['translation']}
     pickle.dump(human_params, open(f'{SAVE_PATH}/human-params.pkl', 'wb'))  # 保存 smpl_params
-    print(f'human params saved to {SAVE_PATH}/human-params.pkl, \nkeys: {human_params.keys()}')
+    print(f'human params saved to {SAVE_PATH}/human-params.pkl, \n\tparams: {human_params.keys()}')
 
     # human_mesh = {'vertices': human['vertices'], 'faces': human['faces'], 'vertex_normals': human['vertex_normals']}
     # pickle.dump(human, open(f'{SAVE_PATH}/human-mesh.pkl', 'wb'))  # 保存 human
@@ -230,10 +236,10 @@ def save_data(human: dict, object: dict, scene: dict):
     object_params = {key: {'rotation': object[key]['rotation'], 'location': object[key]['location']} for key in object.keys()}
     pickle.dump(object_params, open(f'{SAVE_PATH}/object-params.pkl', 'wb'))  # 保存 object_params
     print(
-        f'object params saved to {SAVE_PATH}/object-params.pkl, \nobjects: {object_params.keys()}, keys: {object_params[list(object_params.keys())[0]].keys()}\n')
+        f'object params saved to {SAVE_PATH}/object-params.pkl, \n\tobjects: {object_params.keys()}, params: {object_params[list(object_params.keys())[0]].keys()}')
 
     # object_mesh = {key: {'vertices': object[key]['vertices'], 'faces': object[key]['faces'],
-    #                      'vertex_normals': object[key]['vertex_normals']} for key in object.keys()}
+    #                      'vertex_normals': object[key][' ']} for key in object.keys()}
     # pickle.dump(object_mesh, open(f'{SAVE_PATH}/object-mesh.pkl', 'wb'))  # 保存 object
     # print(
     #     f'object mesh saved to {SAVE_PATH}/object-mesh.pkl, \nobjects: {object.keys()}, keys: {object[list(object.keys())[0]].keys()}\n')

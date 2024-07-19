@@ -10,8 +10,9 @@ build
 *.blend1
 *.egg-info
 
-HOI-M3
-TRUMANS
+dataset
+!dataset/simplify_obj.py
+!dataset/simplify_obj
 test*
 json2pkl.py
 pybullet_data
