@@ -18,3 +18,6 @@ def setup_device():
 
 
 device = setup_device()
+
+SHAPE_X = 10
+SHAPE_Z = 10

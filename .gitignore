@@ -18,3 +18,7 @@ json2pkl.py
 pybullet_data
 MUJOCO_LOG.TXT
 imgs
+
+# tmp
+mesh_ds
+output
