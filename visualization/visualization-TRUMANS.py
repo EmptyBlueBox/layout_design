@@ -10,7 +10,7 @@ import trimesh
 import numpy
 import pickle
 from utils.mesh_utils import compute_vertex_normals
-
+import config
 
 SEG_NUM = 11  # 可视化哪个seg, 从0开始
 SET_FRAME_NUM = 300  # 一个seg中试图选择的帧数
@@ -28,17 +28,8 @@ ONE_OBJECT_ONLY = 1  # 是否只选择 OBJECT_NAME_IF_SAVE 物体
 OBJECT_NAME_IF_SAVE = 'oven'
 
 
-def setup_device():
-    if torch.cuda.is_available():
-        device = torch.device("cuda:0")
-        torch.cuda.set_device(device)
-    else:
-        device = torch.device("cpu")
-    return device
+TRUMANS_PATH = config.DATASET_PATH
 
-
-TRUMANS_PATH = '/Users/emptyblue/Documents/Research/layout_design/dataset/TRUMANS'
-device = setup_device()
 
 seg_begin_list = np.load(TRUMANS_PATH+'/seg_begin.npy')
 seg_begin = seg_begin_list[SEG_NUM]  # 当前seg的开始帧
