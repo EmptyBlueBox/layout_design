@@ -199,6 +199,9 @@ def trilinear_interpolation_vectorized(data, queries):
 
 
 def query_sdf_normalized(query: np.ndarray, object_name: str):
+    '''
+    query 是正常 scale 的点, 坐标原点是 object translation 的中心, 不是 bounding box 的中心
+    '''
     sdf = get_sdf_grid(object_name)
     sdf_grid = sdf['sdf_grid']  # (256, 256, 256)
     sdf_info = sdf['sdf_info']
@@ -336,7 +339,9 @@ def main():
     # 测试 sdf_grid 是否正确生成
     object_list = os.listdir(config.OBJECT_ORIGINAL_PATH)
     for object_name in object_list:
-        visualize_sdf_grid(object_name.split('.')[0])
+        # visualize_sdf_grid(object_name.split('.')[0])
+        # exit(0)
+        get_sdf_grid(object_name.split('.')[0])
     return
 
 

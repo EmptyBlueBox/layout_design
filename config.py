@@ -19,5 +19,7 @@ def setup_device():
 
 device = setup_device()
 
-SHAPE_X = 10
-SHAPE_Z = 10
+ROOM_SHAPE_X = 10
+ROOM_SHAPE_Z = 10
+
+SMPL_MODEL_PATH = '/Users/emptyblue/Documents/Research/HUMAN_MODELS'

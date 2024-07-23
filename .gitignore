@@ -9,15 +9,16 @@ build
 *.blend
 *.blend1
 *.egg-info
+*.obj
 
 dataset
 !dataset/simplify_obj.py
 !dataset/simplify_obj
-test*
 json2pkl.py
 pybullet_data
 MUJOCO_LOG.TXT
 imgs
+outcmaes
 
 # tmp
 mesh_ds
