@@ -33,7 +33,7 @@ MASS_DISTRIBUTION = np.array([Pelvis, Thigh/2, Thigh/2, Abdomen/2, Leg/2, Leg/2,
 FPS = 30
 
 
-def mechanical_energy_vanilla(human_params, FPS=30, data_name=None):
+def mechanical_energy_vanilla(human_params, FPS=30, data_name=None, cutoff=5):
     """
     This Python function calculates various aspects of mechanical energy, including translational and
     rotational energy, for a human model based on input parameters.
@@ -153,9 +153,9 @@ def mechanical_energy_vanilla(human_params, FPS=30, data_name=None):
         'potential_energy': potential_energy,
         'translational_energy': translational_energy,
         'rotational_energy': rotational_energy,
-        'filtered_kinetic_energy': butterworth_filter(translational_energy + rotational_energy, 5),
+        'filtered_kinetic_energy': butterworth_filter(translational_energy + rotational_energy, cutoff),
         'mechanical_energy': mechanical_energy,  # 'energy': 'potential_energy + kinetic_energy + rotational_energy
-        'filtered_mechanical_energy': butterworth_filter(mechanical_energy, 5),
+        'filtered_mechanical_energy': butterworth_filter(mechanical_energy, cutoff),
         'power': power,
         'velocity': velocity,
         'angular_velocity': angular_velocity,
@@ -165,7 +165,7 @@ def mechanical_energy_vanilla(human_params, FPS=30, data_name=None):
     return output
 
 
-def mechanical_energy_mujoco(data_name=None):
+def mechanical_energy_mujoco(data_name=None, cutoff=5):
     model = mujoco.MjModel.from_xml_path('../humanoid/smplx_humanoid-only_body.xml')
     print(f'default timestep: {model.opt.timestep}')
     model.opt.timestep = 1e-4
@@ -197,9 +197,9 @@ def mechanical_energy_mujoco(data_name=None):
         'potential_energy': potential_energy,
         'translational_energy': kinetic_energy,
         'rotational_energy': kinetic_energy,
-        'filtered_kinetic_energy': butterworth_filter(kinetic_energy, 5),
+        'filtered_kinetic_energy': butterworth_filter(kinetic_energy, cutoff),
         'mechanical_energy': mechanical_energy,  # 'energy': 'potential_energy + kinetic_energy + rotational_energy
-        'filtered_mechanical_energy': butterworth_filter(mechanical_energy, 5),
+        'filtered_mechanical_energy': butterworth_filter(mechanical_energy, cutoff),
         'power': power,
     }
     return output

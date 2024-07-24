@@ -11,9 +11,11 @@ from utils.mesh_utils import compute_vertex_normals
 from metric.metric_machanical_energy import mechanical_energy_vanilla, mechanical_energy_mujoco
 from metric.metric_torque import get_mujoco_data, get_torque, torque_power
 
-DATA_NAME = 'drawer-frame_num_100'
+# DATA_NAME = 'drawer-frame_num_100'
+# DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/data_pair-hand_picked/{DATA_NAME}'
+
+DATA_NAME = 'seat_5-frame_num_150'
 DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/{DATA_NAME}'
-DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/data_pair-hand_picked/{DATA_NAME}'
 
 smpl_params = pickle.load(open(DATA_FOLDER+'/human-params.pkl', 'rb'))  # 读取 smpl_params
 FRAME_NUM = smpl_params['poses'].shape[0]
@@ -80,9 +82,9 @@ def write_rerun(human: dict, object: dict):
         print(f'{key} vertices: {object[key]["vertices"].shape[0]}, faces: {object[key]["faces"].shape[0]}')
 
     # # 计算功率
-    # energy_1 = mechanical_energy_vanilla(human_params=human, FPS=30, data_name=DATA_NAME)
-    # energy_2 = mechanical_energy_mujoco(data_name=DATA_NAME)
-    # power_torque = torque_power(data_name=DATA_NAME)
+    energy_1 = mechanical_energy_vanilla(human_params=human, FPS=30, data_name=DATA_NAME)
+    energy_2 = mechanical_energy_mujoco(data_name=DATA_NAME)
+    power_torque = torque_power(data_name=DATA_NAME)
     # torque = get_torque(DATA_NAME)
     # torque_right_thigh = torque[:, 6]  # 右大腿
 
@@ -117,9 +119,9 @@ def write_rerun(human: dict, object: dict):
 
         # rr.log('joint', rr.Points3D(human['joints'][i]))
 
-        # rr.log('data/filtered_kinetic_energy-vanilla', rr.Scalar(energy_1['filtered_kinetic_energy'][i]))  # 画能量曲线
-        # rr.log('data/filtered_kinetic_energy-mujoco', rr.Scalar(energy_2['filtered_kinetic_energy'][i]))  # 画能量曲线
-        # rr.log('data/filtered_kinetic_energy-torque', rr.Scalar(power_torque[i]))  # 画能量曲线
+        rr.log('data/filtered_kinetic_energy-vanilla', rr.Scalar(energy_1['filtered_kinetic_energy'][i]))  # 画能量曲线
+        rr.log('data/filtered_kinetic_energy-mujoco', rr.Scalar(energy_2['filtered_kinetic_energy'][i]))  # 画能量曲线
+        rr.log('data/filtered_kinetic_energy-torque', rr.Scalar(power_torque[i]))  # 画能量曲线
         # rr.log('data/torque-right_Thigh', rr.Scalar(np.linalg.norm(torque_right_thigh[i])))  # print torque
 
         # rr.log('filtered_mechanical_energy', rr.Scalar(energy['filtered_mechanical_energy'][i]))
