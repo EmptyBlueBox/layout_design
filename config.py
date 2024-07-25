@@ -1,6 +1,8 @@
 import torch
 import os
 
+DATASET_SHADE_PATH = '/Users/emptyblue/Documents/Research/layout_design/dataset/SHADE'
+
 DATASET_PATH = '/Users/emptyblue/Documents/Research/layout_design/dataset/TRUMANS'
 OBJECT_ORIGINAL_PATH = os.path.join(DATASET_PATH, 'Object_all/Object_mesh')
 OBJECT_DECIMATED_PATH = os.path.join(DATASET_PATH, 'Object_all/Object_mesh_decimated')
