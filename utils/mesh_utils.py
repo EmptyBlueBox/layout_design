@@ -78,7 +78,7 @@ def get_unit_cube_mesh(mesh):
     return trimesh.Trimesh(vertices=vertices, faces=mesh.faces)
 
 
-def get_sdf_grid(object_name: str, grid_dim=256, print_time=True):
+def get_sdf_grid(object_name: str, grid_dim=256, print_time=False):
     if print_time:
         start_time = time.time()
 
@@ -168,6 +168,9 @@ def trilinear_interpolation_vectorized(data, queries):
     x1, y1, z1 = x0 + 1, y0 + 1, z0 + 1
 
     # 边界检查，防止索引超出范围
+    x0 = np.clip(x0, 0, a - 1)
+    y0 = np.clip(y0, 0, b - 1)
+    z0 = np.clip(z0, 0, c - 1)
     x1 = np.clip(x1, 0, a - 1)
     y1 = np.clip(y1, 0, b - 1)
     z1 = np.clip(z1, 0, c - 1)
@@ -294,9 +297,9 @@ def sample_point_cloud_from_mesh(mesh: trimesh.Trimesh, num_points: int, oversam
     np.ndarray: 采样的点云，形状为 (num_points, 3)。
     """
 
-    # 确保输入的网格是三角形网格
-    if not mesh.is_watertight:
-        raise ValueError("输入的网格必须是闭合且 watertight 的三角形网格。")
+    # # 确保输入的网格是三角形网格
+    # if not mesh.is_watertight:
+    #     raise ValueError("输入的网格必须是闭合且 watertight 的三角形网格。")
 
     # 过采样点数
     oversample_points = num_points * oversample_factor
@@ -315,24 +318,36 @@ def farthest_point_sampling(points, num_samples):
     使用最远点采样从点云中选择指定数量的点。
 
     参数:
-    points (np.ndarray): 输入的点云，形状为 (N, 3)。
+    points (np.ndarray): 输入的点云，形状为 (B, N, 3) 或者 (N, 3)
     num_samples (int): 需要采样的点的数量。
 
     返回:
-    np.ndarray: 采样的点云，形状为 (num_samples, 3)。
+    np.ndarray: 采样的点云，形状为 (B, num_samples, 3) 或者 (num_samples, 3)
     """
-    N, D = points.shape
-    centroids = np.zeros((num_samples,), dtype=np.int32)
-    distances = np.ones((N,)) * 1e10
-    farthest = np.random.randint(0, N)
+    if len(points.shape) == 2:
+        points = np.expand_dims(points, axis=0)
+    B, N, D = points.shape
+
+    # 初始化返回的采样点索引
+    centroids = np.zeros((B, num_samples), dtype=np.int32)
+    # 初始化最大距离数组
+    distances = np.ones((B, N)) * 1e10
+    # 随机选择初始点
+    farthest = np.random.randint(0, N, B)
+    batch_indices = np.arange(B)
+
     for i in range(num_samples):
-        centroids[i] = farthest
-        centroid = points[farthest]
-        dist = np.sum((points - centroid) ** 2, axis=1)
+        centroids[:, i] = farthest
+        centroid = points[batch_indices, farthest].reshape(B, 1, D)
+        dist = np.sum((points - centroid) ** 2, -1)
         mask = dist < distances
         distances[mask] = dist[mask]
-        farthest = np.argmax(distances)
-    return points[centroids]
+        farthest = np.argmax(distances, axis=1)
+
+    sampled_points = points[batch_indices[:, None], centroids]
+    if B == 1:
+        sampled_points = sampled_points[0]
+    return sampled_points
 
 
 def main():
