@@ -21,7 +21,7 @@ def write_object_human(object_params,
                        max_frame_num=500,
                        fps=30,
                        human_query_max=500,
-                       object_query_max=500,
+                       object_query_max=300,
                        over_sample_factor=3,):
     R_delta = R.from_rotvec(np.array([0, delta_theta, 0]))
     frame_num = human_params['poses'].shape[0]
@@ -51,9 +51,11 @@ def write_object_human(object_params,
     object_base = next(iter(object_params.keys()))
     # 计算人体旋转之后的参数
     human_orientation = R_delta*R.from_rotvec(human_params['orientation'])
-    human_params['orientation'] = human_orientation.as_rotvec()
-    human_params['translation'] = R_delta.apply(
+    human_orientation = human_orientation.as_rotvec()
+    human_translation = R_delta.apply(
         human_params['translation']-object_params[object_base]['location'])+object_params[object_base]['location']+delta_x
+    # print(
+    #     f"test human: {human_params['translation'][:5]}, delta_x: {delta_x}, object_params[object_base]['location']: {object_params[object_base]['location'][:5]}")
     # 计算人体的顶点
     human_model = smplx.create(model_path=config.SMPL_MODEL_PATH,
                                model_type='smplx',
@@ -64,8 +66,8 @@ def write_object_human(object_params,
                                ext='npz',
                                batch_size=frame_num)
     output = human_model(body_pose=torch.tensor(human_params['poses'], dtype=torch.float32),
-                         global_orient=torch.tensor(human_params['orientation'], dtype=torch.float32),
-                         transl=torch.tensor(human_params['translation'], dtype=torch.float32))
+                         global_orient=torch.tensor(human_orientation, dtype=torch.float32),
+                         transl=torch.tensor(human_translation, dtype=torch.float32))
     vertices_0 = output.vertices.detach().cpu().numpy()
     vertices = np.zeros((max_frame_num, vertices_0.shape[1], 3))
     vertices[:frame_num] = vertices_0
