@@ -15,7 +15,7 @@ from utils.visualization_utils import write_object_human
 import rerun as rr
 
 
-def load_data():
+def load_data(step=50):
     DATA_FOLDER = '/Users/emptyblue/Documents/Research/layout_design/dataset/data_pair-hand_picked'
     subdata_list = os.listdir(DATA_FOLDER)
     subdata_list.sort()
@@ -36,6 +36,22 @@ def load_data():
         # data[tuple(object_params.keys())].append(data_entry)
         data[tuple(object_params.keys())] = [data_entry]  # 只取第一个数据
 
+    for key in data.keys():
+        for i in range(len(data[key])):
+            for single_obj_name in key:
+                data[key][i]['object_params'][single_obj_name]['location'] = data[key][i]['object_params'][single_obj_name]['location'][::step]
+                data[key][i]['object_params'][single_obj_name]['rotation'] = data[key][i]['object_params'][single_obj_name]['rotation'][::step]
+            data[key][i]['human_params']['translation'] = data[key][i]['human_params']['translation'][::step]
+            data[key][i]['human_params']['orientation'] = data[key][i]['human_params']['orientation'][::step]
+            data[key][i]['human_params']['poses'] = data[key][i]['human_params']['poses'][::step]
+            # 人体和物体的 x z 位置归零
+            base_obj_name = key[0]
+            for single_obj_name in key:
+                if single_obj_name != base_obj_name:
+                    data[key][i]['object_params'][single_obj_name]['location'][:, [0, 2]
+                                                                               ] -= data[key][i]['object_params'][base_obj_name]['location'][0, [0, 2]]
+            data[key][i]['human_params']['translation'][:, [0, 2]] -= data[key][i]['object_params'][base_obj_name]['location'][0, [0, 2]]
+            data[key][i]['object_params'][base_obj_name]['location'][:, [0, 2]] -= data[key][i]['object_params'][base_obj_name]['location'][0, [0, 2]]
     return data
 
 
@@ -76,7 +92,6 @@ class visualize_data:
                 for single_obj_name in key:
                     length = self.data[key][i]['object_params'][single_obj_name]['location'].shape[0]
                     length = self.data[key][i]['object_params'][single_obj_name]['rotation'].shape[0]
-                print(f'object: {key}, motion: {i}, len: {length}')
                 max_frame = max(max_frame, length)
         print(f'max_frame: {max_frame}')
 
@@ -92,21 +107,30 @@ class visualize_data:
         rr.log(
             "wall",
             rr.Boxes3D(
-                centers=[config.ROOM_SHAPE_X/2, .5, config.ROOM_SHAPE_Z/2],
-                half_sizes=[config.ROOM_SHAPE_X/2, .5, config.ROOM_SHAPE_Z/2],
+                centers=[config.ROOM_SHAPE_X/2, .8, config.ROOM_SHAPE_Z/2],
+                half_sizes=[config.ROOM_SHAPE_X/2, .8, config.ROOM_SHAPE_Z/2],
                 radii=0.01,
                 colors=(0, 0, 255),
                 labels="blue",
             ),
         )
-        for key in self.data.keys():
-            for i in range(len(self.data[key])):
-                human_params = self.data[key][0]['human_params']
-                object_params = self.data[key][0]['object_params']
-                write_object_human(object_params, human_params, np.array([x[i, 0], 0, x[i, 1]]), x[i, 2])
+        query_point = {}
+        for i in range(self.object_num):
+            for j in range(len(self.data[self.obj_name[i]])):
+                print(f'object: {self.obj_name[i]}, x: {x[i]}')
+                human_params = self.data[self.obj_name[i]][j]['human_params']
+                object_params = self.data[self.obj_name[i]][j]['object_params']
+                query = write_object_human(object_params,
+                                           human_params,
+                                           np.array([x[i, 0], 0, x[i, 1]]),
+                                           x[i, 2],
+                                           max_frame_num=max_frame)
+                query_point[key] = query
 
         rr.script_teardown(args)
         print('write rerun done!\n')
+
+        return query_point
 
 
 visualizer = None
@@ -292,7 +316,8 @@ class objective_function:
 
     def __call__(self, x):
         x = x.reshape(self.object_num, 3)
-        visualizer(x)
+        print(f'objective_function x: {x}')
+        self.query_point = visualizer(x)
 
         # 计算所有物体之间的碰撞
         print('Calculating loss_obj2obj...')
@@ -335,7 +360,7 @@ def optimize(data: dict):
     object_num = len(data)
     translation_init = np.random.rand(object_num, 2)*np.array([config.ROOM_SHAPE_X, config.ROOM_SHAPE_Z])
     orientation_init = np.random.rand(object_num, 1)*2*np.pi-np.pi
-    print(f'Initial translation: {translation_init.shape}, orientation: {orientation_init.shape}')
+    print(f'Initial translation: {translation_init}, orientation: {orientation_init}')
     x0 = np.concatenate((translation_init, orientation_init), axis=1).reshape(-1)
     sigma0 = 1
 

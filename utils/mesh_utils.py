@@ -11,6 +11,7 @@ import torch.nn.functional as F
 import rerun as rr
 import skimage
 import random
+from tqdm import tqdm
 
 
 def compute_vertex_normals(vertices, faces):
