@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 import cma
 import os
@@ -10,6 +11,8 @@ import trimesh
 import smplx
 import torch
 from tqdm import tqdm
+from utils.visualization_utils import write_object_human
+import rerun as rr
 
 
 def load_data():
@@ -30,7 +33,8 @@ def load_data():
         human_params = pickle.load(open(subdata_human_path, 'rb'))
         object_params = pickle.load(open(subdata_object_path, 'rb'))
         data_entry = {'human_params': human_params, 'object_params': object_params}
-        data[tuple(object_params.keys())].append(data_entry)
+        # data[tuple(object_params.keys())].append(data_entry)
+        data[tuple(object_params.keys())] = [data_entry]  # 只取第一个数据
 
     return data
 
@@ -50,6 +54,62 @@ def print_data(data: dict):
         scale = np.sqrt(delta_x**2 + delta_y**2 + delta_z**2)
         print(f'Object {key}, trajectory scale: {scale}, delta_x: {delta_x}, delta_y: {delta_y}, delta_z: {delta_z}')
     print(f"One data entry\'s object_params has key: {data[('cabinet_base_01', 'cabinet_door_01')][0]['object_params']['cabinet_base_01'].keys()}\n")
+
+
+class visualize_data:
+    def __init__(self, data):
+        self.data = data
+
+        self.object_num = len(data)
+        self.obj_name = list(data.keys())
+
+    def __call__(self, x):
+        '''
+        x: (K, 3) 二维数组, K 为物体数量, 3 为每个物体的xz位移和y旋转
+        '''
+        max_frame = 0
+        for key in self.data.keys():
+            for i in range(len(self.data[key])):
+                length = self.data[key][i]['human_params']['translation'].shape[0]
+                length = self.data[key][i]['human_params']['orientation'].shape[0]
+                length = self.data[key][i]['human_params']['poses'].shape[0]
+                for single_obj_name in key:
+                    length = self.data[key][i]['object_params'][single_obj_name]['location'].shape[0]
+                    length = self.data[key][i]['object_params'][single_obj_name]['rotation'].shape[0]
+                print(f'object: {key}, motion: {i}, len: {length}')
+                max_frame = max(max_frame, length)
+        print(f'max_frame: {max_frame}')
+
+        print('writing rerun...')
+        parser = argparse.ArgumentParser(description="Logs rich data using the Rerun SDK.")
+        rr.script_add_args(parser)
+        args = parser.parse_args()
+        rr.script_setup(args, 'gradient descent CMAES')
+        rr.log("", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)  # Set an up-axis = +Y
+        rr.set_time_seconds("stable_time", 0)
+
+        # 画墙
+        rr.log(
+            "wall",
+            rr.Boxes3D(
+                centers=[config.ROOM_SHAPE_X/2, .5, config.ROOM_SHAPE_Z/2],
+                half_sizes=[config.ROOM_SHAPE_X/2, .5, config.ROOM_SHAPE_Z/2],
+                radii=0.01,
+                colors=(0, 0, 255),
+                labels="blue",
+            ),
+        )
+        for key in self.data.keys():
+            for i in range(len(self.data[key])):
+                human_params = self.data[key][0]['human_params']
+                object_params = self.data[key][0]['object_params']
+                write_object_human(object_params, human_params, np.array([x[i, 0], 0, x[i, 1]]), x[i, 2])
+
+        rr.script_teardown(args)
+        print('write rerun done!\n')
+
+
+visualizer = None
 
 
 class objective_function:
@@ -85,7 +145,6 @@ class objective_function:
             mesh = trimesh.load_mesh(obj_path)
             point_cloud = sample_point_cloud_from_mesh(mesh, self.object_point, self.oversample_factor)
             for original_params in self.data[obj_name1]:  # 对每一个 motion trajectory, 采集了没有运动的点云, 还需要 1.把点云放到路径上面 2.进行 x 的旋转和平移
-                # print(f'111:{original_params.keys()}')
                 original_translation = original_params['object_params'][single_obj_name]['location'][::self.step]
                 original_translation_1.append(original_translation)
                 original_orientation = R.from_euler('xyz', original_params['object_params'][single_obj_name]['rotation'][::self.step])  # T 个 R 对象
@@ -129,8 +188,10 @@ class objective_function:
                         new_point_cloud_1 = original_orientation_2[j][ll].inv().apply(point_clouds_1[i][k]-original_translation_2[j][ll])
                         # print(f'obj_name2 length: {len(obj_name2)}, j//len(obj_name2): {j//motion_num1}')  # 测试
                         signed_distence = query_sdf_normalized(new_point_cloud_1, obj_name2[j//motion_num2])  # 一个点云和一个物体的碰撞深度
+                        # print(f'signed_distence min: {np.min(signed_distence)}')
                         negative_mask = signed_distence < 0
                         loss_1 = -np.sum(signed_distence[negative_mask])
+                        # print(f'loss_1: {loss_1}')
 
                         new_point_cloud_2 = original_orientation_1[i][k].inv().apply(point_clouds_2[j][ll]-original_translation_1[i][k])
                         signed_distence = query_sdf_normalized(new_point_cloud_2, obj_name1[i//motion_num1])
@@ -140,6 +201,7 @@ class objective_function:
                         frame_penetration.append(loss_1+loss_2)
         frame_penetration = np.array(frame_penetration)
 
+        # print(f'frame_penetration 10: {frame_penetration[:100]}')
         return np.max(frame_penetration)
 
     def loss_human_obj(self, human_name, obj_name, info1, info2):
@@ -230,6 +292,7 @@ class objective_function:
 
     def __call__(self, x):
         x = x.reshape(self.object_num, 3)
+        visualizer(x)
 
         # 计算所有物体之间的碰撞
         print('Calculating loss_obj2obj...')
@@ -276,7 +339,7 @@ def optimize(data: dict):
     x0 = np.concatenate((translation_init, orientation_init), axis=1).reshape(-1)
     sigma0 = 1
 
-    obj = objective_function(data, step=100)
+    obj = objective_function(data, step=100, object_point=3000)
     cfun = cma.ConstrainedFitnessAL(obj, constraints)  # unconstrained function with adaptive Lagrange multipliers
 
     x, es = cma.fmin2(cfun, x0, sigma0, {'tolstagnation': 0}, callback=cfun.update)
@@ -293,5 +356,6 @@ def optimize(data: dict):
 if __name__ == '__main__':
     data = load_data()
     print_data(data)
+    visualizer = visualize_data(data)
     output = optimize(data)
     print(output)

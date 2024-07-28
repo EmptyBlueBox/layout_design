@@ -16,7 +16,7 @@ import pickle
 import torch
 from utils.mesh_utils import compute_vertex_normals
 from utils.pytorch3d_utils import quaternion_multiply, axis_angle_to_quaternion, quaternion_to_axis_angle, quaternion_apply
-
+import config
 
 DATA_NAME = 'seat_5-frame_num_150'
 EPOCH = 200
@@ -220,7 +220,7 @@ def optimize():
     # 可视化人
     delta_quaternion = axis_angle_to_quaternion(torch.tensor([0, 1, 0])*PARAMETER_OPTIMIZE['orientation'])
 
-    human_model = smplx.create(model_path='/Users/emptyblue/Documents/Research/HUMAN_MODELS',
+    human_model = smplx.create(model_path=config.SMPL_MODEL_PATH,
                                model_type='smplx',
                                gender='neutral',
                                use_face_contour=False,
