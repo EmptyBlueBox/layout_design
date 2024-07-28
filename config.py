@@ -24,7 +24,7 @@ def setup_device():
 
 device = setup_device()
 
-ROOM_SHAPE_X = 6
-ROOM_SHAPE_Z = 6
+ROOM_SHAPE_X = 7
+ROOM_SHAPE_Z = 7
 
 SMPL_MODEL_PATH = '/Users/emptyblue/Documents/Research/HUMAN_MODELS'

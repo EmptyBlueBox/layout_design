@@ -6,13 +6,13 @@ import regex as re
 import pickle
 import config
 from scipy.spatial.transform import Rotation as R
-from utils.mesh_utils import query_sdf_normalized, sample_point_cloud_from_mesh, farthest_point_sampling
+from utils.mesh_utils import compute_vertex_normals, query_sdf_normalized, sample_point_cloud_from_mesh, farthest_point_sampling
 import trimesh
 import smplx
 import torch
 from tqdm import tqdm
-from utils.visualization_utils import write_object_human
 import rerun as rr
+import time
 
 
 def load_data(step=50):
@@ -33,8 +33,8 @@ def load_data(step=50):
         human_params = pickle.load(open(subdata_human_path, 'rb'))
         object_params = pickle.load(open(subdata_object_path, 'rb'))
         data_entry = {'human_params': human_params, 'object_params': object_params}
-        data[tuple(object_params.keys())].append(data_entry)
-        # data[tuple(object_params.keys())] = [data_entry]  # 只取第一个数据
+        # data[tuple(object_params.keys())].append(data_entry)
+        data[tuple(object_params.keys())] = [data_entry]  # 只取第一个数据
 
     for key in data.keys():
         for i in range(len(data[key])):
@@ -72,12 +72,129 @@ def print_data(data: dict):
     print(f"One data entry\'s object_params has key: {data[('cabinet_base_01', 'cabinet_door_01')][0]['object_params']['cabinet_base_01'].keys()}\n")
 
 
-class visualize_data:
-    def __init__(self, data):
+def sample_point_from_motion(object_params,
+                             human_params,
+                             delta_x,
+                             delta_theta,
+                             object_mesh_path=config.OBJECT_DECIMATED_PATH,
+                             max_frame_num=500,
+                             fps=30,
+                             human_query_max=500,
+                             object_query_max=300,
+                             over_sample_factor=3,
+                             visualize=False):
+    R_delta = R.from_rotvec(np.array([0, delta_theta, 0]))
+    frame_num = human_params['poses'].shape[0]
+    # 计算物体旋转之后的参数和顶点, 基础物体自己旋转即可
+    object_base = next(iter(object_params.keys()))
+    object_mesh = {}
+    for key in object_params.keys():
+        object_orientation = R_delta*R.from_euler('xyz', object_params[key]['rotation'])
+        if key == object_base:
+            object_translation = object_params[key]['location'] + delta_x
+        else:
+            object_translation = R_delta.apply(object_params[key]['location']-object_params[object_base]
+                                               ['location'])+object_params[object_base]['location']+delta_x
+        decimated_mesh_path = os.path.join(object_mesh_path, key + '.obj')
+        decimated_mesh = trimesh.load(decimated_mesh_path)
+        object_mesh[key] = {}  # 初始化一个子物体的字典
+        object_mesh[key]['vertices'] = np.zeros((max_frame_num, decimated_mesh.vertices.shape[0], 3))
+        for t in range(frame_num):
+            object_mesh[key]['vertices'][t] = object_orientation[t].apply(decimated_mesh.vertices) + object_translation[t]
+        for t in range(frame_num, max_frame_num):
+            object_mesh[key]['vertices'][t] = object_mesh[key]['vertices'][frame_num-1]
+        object_mesh[key]['faces'] = decimated_mesh.faces
+        object_mesh[key]['vertex_normals'] = np.zeros_like(object_mesh[key]['vertices'])
+        for t in range(max_frame_num):
+            object_mesh[key]['vertex_normals'][t] = compute_vertex_normals(object_mesh[key]['vertices'][t], object_mesh[key]['faces'])
+
+    object_base = next(iter(object_params.keys()))
+    # 计算人体旋转之后的参数
+    human_orientation = R_delta*R.from_rotvec(human_params['orientation'])
+    human_orientation = human_orientation.as_rotvec()
+    human_translation = R_delta.apply(
+        human_params['translation']-object_params[object_base]['location'])+object_params[object_base]['location']+delta_x
+    # print(
+    #     f"test human: {human_params['translation'][:5]}, delta_x: {delta_x}, object_params[object_base]['location']: {object_params[object_base]['location'][:5]}")
+    # 计算人体的顶点
+    human_model = smplx.create(model_path=config.SMPL_MODEL_PATH,
+                               model_type='smplx',
+                               gender='neutral',
+                               use_face_contour=False,
+                               num_betas=10,
+                               num_expression_coeffs=10,
+                               ext='npz',
+                               batch_size=frame_num)
+    output = human_model(body_pose=torch.tensor(human_params['poses'], dtype=torch.float32),
+                         global_orient=torch.tensor(human_orientation, dtype=torch.float32),
+                         transl=torch.tensor(human_translation, dtype=torch.float32))
+    vertices_0 = output.vertices.detach().cpu().numpy()
+    vertices = np.zeros((max_frame_num, vertices_0.shape[1], 3))
+    vertices[:frame_num] = vertices_0
+    vertices[frame_num:] = vertices[frame_num-1]
+    faces = human_model.faces
+    vertex_normals = np.zeros_like(vertices)
+    for i in range(vertices.shape[0]):
+        vertex_normals[i] = compute_vertex_normals(vertices[i], faces)
+    human_mesh = {'vertices': vertices, 'faces': faces, 'vertex_normals': vertex_normals}
+
+    if visualize:
+        for i in range(max_frame_num):
+            time = i / fps
+            rr.set_time_seconds("stable_time", time)
+
+            # 画人
+            rr.log(
+                f'{object_base}/human',
+                rr.Mesh3D(
+                    vertex_positions=human_mesh['vertices'][i],
+                    triangle_indices=human_mesh['faces'],
+                    vertex_normals=human_mesh['vertex_normals'][i],
+                ),
+            )
+
+            # 画物体
+            for key in object_mesh.keys():  # 一个frame中遍历所有object: 人物, 椅子, 桌子等
+                rr.log(f'{object_base}/object/{key}',
+                       rr.Mesh3D(
+                           vertex_positions=object_mesh[key]['vertices'][i],
+                           triangle_indices=object_mesh[key]['faces'],
+                           vertex_normals=object_mesh[key]['vertex_normals'][i],
+                       ),
+                       )
+
+    object_query_points = np.concatenate([object_mesh[key]['vertices'] for key in object_mesh.keys()], axis=1)
+    human_query_points = human_mesh['vertices']
+    if human_query_points.shape[1] > human_query_max:
+        # 随机选择3*human_query_max个点
+        over_sample_num = min(over_sample_factor*human_query_max, human_query_points.shape[1])
+        human_query_points = human_query_points[:, np.random.choice(human_query_points.shape[1], over_sample_num, replace=False)]
+        human_query_points = farthest_point_sampling(human_query_points, human_query_max)
+    if object_query_points.shape[1] > object_query_max:
+        # 随机选择3*object_query_max个点
+        over_sample_num = min(over_sample_factor*object_query_max, object_query_points.shape[1])
+        object_query_points = object_query_points[:, np.random.choice(object_query_points.shape[1], over_sample_num, replace=False)]
+        object_query_points = farthest_point_sampling(object_query_points, object_query_max)
+    human_query_points = human_query_points.reshape(-1, 3)
+    object_query_points = object_query_points.reshape(-1, 3)
+
+    all_query = np.concatenate([human_query_points, object_query_points], axis=0)
+    # print('all_query:', all_query.shape)
+
+    if visualize:
+        rr.log(f'{object_base}/query_points', rr.Points3D(all_query))
+
+    return all_query
+
+
+class sample_query_point:
+    def __init__(self, data, visualize=False):
         self.data = data
+        self.visualize = visualize
 
         self.object_num = len(data)
         self.obj_name = list(data.keys())
+        self.query_point = None
 
     def __call__(self, x):
         '''
@@ -95,51 +212,56 @@ class visualize_data:
                 max_frame = max(max_frame, length)
         # print(f'max_frame: {max_frame}')
 
-        print('writing rerun...')
-        parser = argparse.ArgumentParser(description="Logs rich data using the Rerun SDK.")
-        rr.script_add_args(parser)
-        args = parser.parse_args()
-        rr.script_setup(args, 'CMA-ES')
-        rr.log("", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)  # Set an up-axis = +Y
-        rr.set_time_seconds("stable_time", 0)
+        if self.visualize:
+            print('writing rerun...')
+            parser = argparse.ArgumentParser(description="Logs rich data using the Rerun SDK.")
+            rr.script_add_args(parser)
+            args = parser.parse_args()
+            rr.script_setup(args, 'CMA-ES')
+            rr.log("", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)  # Set an up-axis = +Y
+            rr.set_time_seconds("stable_time", 0)
 
-        # 画墙
-        rr.log(
-            "wall",
-            rr.Boxes3D(
-                centers=[config.ROOM_SHAPE_X/2, .8, config.ROOM_SHAPE_Z/2],
-                half_sizes=[config.ROOM_SHAPE_X/2, .8, config.ROOM_SHAPE_Z/2],
-                radii=0.01,
-                colors=(0, 0, 255),
-                labels="blue",
-            ),
-        )
-        query_point = {}
-        for i in range(self.object_num):
-            query_point[self.obj_name[i]] = []
-            for j in range(len(self.data[self.obj_name[i]])):
-                # print(f'object: {self.obj_name[i]}, x: {x[i]}')
-                human_params = self.data[self.obj_name[i]][j]['human_params']
-                object_params = self.data[self.obj_name[i]][j]['object_params']
-                query = write_object_human(object_params,
-                                           human_params,
-                                           np.array([x[i, 0], 0, x[i, 1]]),
-                                           x[i, 2],
-                                           max_frame_num=max_frame)
-                query_point[self.obj_name[i]].append(query)
+            # 画墙
+            rr.log(
+                "wall",
+                rr.Boxes3D(
+                    centers=[config.ROOM_SHAPE_X/2, .8, config.ROOM_SHAPE_Z/2],
+                    half_sizes=[config.ROOM_SHAPE_X/2, .8, config.ROOM_SHAPE_Z/2],
+                    radii=0.01,
+                    colors=(0, 0, 255),
+                    labels="blue",
+                ),
+            )
 
-        rr.script_teardown(args)
-        print('write rerun done!\n')
+        if self.query_point is None:
+            query_point = {}
+            for i in range(self.object_num):
+                query_point[self.obj_name[i]] = []
+                for j in range(len(self.data[self.obj_name[i]])):
+                    # print(f'object: {self.obj_name[i]}, x: {x[i]}')
+                    human_params = self.data[self.obj_name[i]][j]['human_params']
+                    object_params = self.data[self.obj_name[i]][j]['object_params']
+                    query = sample_point_from_motion(object_params,
+                                                     human_params,
+                                                     np.array([x[i, 0], 0, x[i, 1]]),
+                                                     x[i, 2],
+                                                     max_frame_num=max_frame,
+                                                     visualize=self.visualize)
+                    query_point[self.obj_name[i]].append(query)
+        else:
+            query_point = self.query_point
+
+        if self.visualize:
+            rr.script_teardown(args)
+            print('write rerun done!\n')
 
         return query_point
 
 
-visualizer = None
-
-
 class objective_function:
-    def __init__(self, data, step=10, obj_loss_scale=5, object_point=1000, human_point=2000, oversample_factor=2):
+    def __init__(self, data, sampler, step=10, obj_loss_scale=5, object_point=1000, human_point=2000, oversample_factor=2):
         self.data = data
+        self.sampler = sampler
         self.step = step
         self.obj_loss_scale = obj_loss_scale
         self.object_point = object_point
@@ -172,17 +294,16 @@ class objective_function:
             for j in range(motion_num2):  # 对第二个物体组的每一个 motion trajectory 是一个点云
                 point_cloud_1_when_2_normal = orientation_2.inv().apply(query_point_1[i]-translation_2)+translation_2
                 # print(f'obj_name2 length: {len(obj_name2)}, j//len(obj_name2): {j//motion_num1}')  # 测试
+                start = time.time()
                 signed_distence = query_sdf_normalized(point_cloud_1_when_2_normal, obj_name2[0])  # 一个点云和一个物体的碰撞深度
-                # print(f'signed_distence min: {np.min(signed_distence)}')
+                # print(f'query_sdf_normalized time: {time.time()-start}')
                 negative_mask = signed_distence < 0
                 loss_1 = -np.sum(signed_distence[negative_mask])
-                # print(f'loss_1: {loss_1}')
 
                 point_cloud_2_when_1_normal = orientation_1.inv().apply(query_point_2[j]-translation_1)+translation_1
                 signed_distence = query_sdf_normalized(point_cloud_2_when_1_normal, obj_name1[0])
                 negative_mask = signed_distence < 0
                 loss_2 = -np.sum(signed_distence[negative_mask])
-                # print(f'loss_2: {loss_2}')
 
                 motion_clip_penetration.append(loss_1+loss_2)
 
@@ -216,9 +337,12 @@ class objective_function:
         return np.max(motion_clip_penetration)
 
     def __call__(self, x):
+        print('Start objective_function')
+        obj_start = time.time()
+
         x = x.reshape(self.object_num, 3)
         # print(f'objective_function x: {x}')
-        self.query_point = visualizer(x)
+        self.query_point = self.sampler(x)
 
         # 计算所有物体之间的碰撞
         print('Calculating loss_motion_obj...')
@@ -234,6 +358,7 @@ class objective_function:
             loss_human_obj += self.loss_motion_wall(self.obj_name[i], x[i])
 
         print(f'loss_motion_obj: {loss_obj2obj}, loss_motion_wall: {loss_human_obj}')
+        print(f'End objective_function, time: {time.time()-obj_start}\n')
         return loss_obj2obj * self.obj_loss_scale + loss_human_obj
 
 
@@ -264,7 +389,12 @@ def optimize(data: dict):
     x0 = np.concatenate((translation_init, orientation_init), axis=1).reshape(-1)
     sigma0 = 1
 
-    obj = objective_function(data, step=100, object_point=3000)
+    sampler = sample_query_point(data, visualize=False)
+    obj = objective_function(data,
+                             sampler,
+                             obj_loss_scale=10,
+                             step=100,
+                             object_point=3000)
     cfun = cma.ConstrainedFitnessAL(obj, constraints)  # unconstrained function with adaptive Lagrange multipliers
 
     x, es = cma.fmin2(cfun, x0, sigma0, {'tolstagnation': 0}, callback=cfun.update)
@@ -280,7 +410,6 @@ def optimize(data: dict):
 
 if __name__ == '__main__':
     data = load_data()
-    print_data(data)
-    visualizer = visualize_data(data)
+    print_data(data=data)
     output = optimize(data)
     print(output)
