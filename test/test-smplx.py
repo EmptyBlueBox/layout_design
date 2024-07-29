@@ -89,15 +89,15 @@ def main(model_folder='/Users/emptyblue/Documents/Research/HUMAN_MODELS',
     print('Joints shape: ', joints.shape)
     print('Normals shape: ', normals.shape)
 
-    rr.init("rerun_example_mesh", spawn=True)
-    rr.log(
-        "triangle",
-        rr.Mesh3D(
-            vertex_positions=vertices,
-            triangle_indices=model.faces,
-            vertex_normals=normals,
-        ),
-    )
+    # rr.init("rerun_example_mesh", spawn=True)
+    # rr.log(
+    #     "triangle",
+    #     rr.Mesh3D(
+    #         vertex_positions=vertices,
+    #         triangle_indices=model.faces,
+    #         vertex_normals=normals,
+    #     ),
+    # )
 
     # if plotting_module == 'pyrender':
     #     import pyrender

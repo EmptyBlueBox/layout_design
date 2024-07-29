@@ -14,8 +14,10 @@ from tqdm import tqdm
 import rerun as rr
 import time
 
+visualize = True
 
-def load_data(step=50):
+
+def load_data(step=30):
     DATA_FOLDER = '/Users/emptyblue/Documents/Research/layout_design/dataset/data_pair-hand_picked'
     subdata_list = os.listdir(DATA_FOLDER)
     subdata_list.sort()
@@ -196,7 +198,10 @@ class sample_query_point:
         self.obj_name = list(data.keys())
         self.query_point = None
 
-    def __call__(self, x):
+    def __call__(self,
+                 x,
+                 save=False  # 是否保存 rerun 文件, 只有在优化到 loss 为 0 时才需要保存
+                 ):
         '''
         x: (K, 3) 二维数组, K 为物体数量, 3 为每个物体的xz位移和y旋转
         '''
@@ -217,7 +222,7 @@ class sample_query_point:
             parser = argparse.ArgumentParser(description="Logs rich data using the Rerun SDK.")
             rr.script_add_args(parser)
             args = parser.parse_args()
-            rr.script_setup(args, 'CMA-ES')
+            rr.script_setup(args, f'CMAES-{config.ROOM_SHAPE_X}x{config.ROOM_SHAPE_Z}-{save}')
             rr.log("", rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)  # Set an up-axis = +Y
             rr.set_time_seconds("stable_time", 0)
 
@@ -292,15 +297,12 @@ class objective_function:
         # print(f'loop1: {motion_num1}, loop2: {motion_num2}')
         for i in range(motion_num1):  # 对第一个物体组的每一个 motion trajectory 是一个点云
             for j in range(motion_num2):  # 对第二个物体组的每一个 motion trajectory 是一个点云
-                point_cloud_1_when_2_normal = orientation_2.inv().apply(query_point_1[i]-translation_2)+translation_2
-                # print(f'obj_name2 length: {len(obj_name2)}, j//len(obj_name2): {j//motion_num1}')  # 测试
-                start = time.time()
+                point_cloud_1_when_2_normal = orientation_2.inv().apply(query_point_1[i]-translation_2)
                 signed_distence = query_sdf_normalized(point_cloud_1_when_2_normal, obj_name2[0])  # 一个点云和一个物体的碰撞深度
-                # print(f'query_sdf_normalized time: {time.time()-start}')
                 negative_mask = signed_distence < 0
                 loss_1 = -np.sum(signed_distence[negative_mask])
 
-                point_cloud_2_when_1_normal = orientation_1.inv().apply(query_point_2[j]-translation_1)+translation_1
+                point_cloud_2_when_1_normal = orientation_1.inv().apply(query_point_2[j]-translation_1)
                 signed_distence = query_sdf_normalized(point_cloud_2_when_1_normal, obj_name1[0])
                 negative_mask = signed_distence < 0
                 loss_2 = -np.sum(signed_distence[negative_mask])
@@ -308,7 +310,9 @@ class objective_function:
                 motion_clip_penetration.append(loss_1+loss_2)
 
         motion_clip_penetration = np.array(motion_clip_penetration)
-        return np.max(motion_clip_penetration)
+        loss = np.mean(motion_clip_penetration)
+        # print(f'obj1: {obj_name1}, obj2: {obj_name2}, loss: {loss}')
+        return loss
 
     def loss_motion_wall(self, motion_name, info):
         query_point = self.query_point[motion_name]
@@ -334,7 +338,9 @@ class objective_function:
             motion_clip_penetration.append(loss)
 
         motion_clip_penetration = np.array(motion_clip_penetration)
-        return np.max(motion_clip_penetration)
+        loss = np.mean(motion_clip_penetration)
+        # print(f'motion_name: {motion_name}, loss: {loss}')
+        return loss
 
     def __call__(self, x):
         print('Start objective_function')
@@ -342,9 +348,9 @@ class objective_function:
 
         x = x.reshape(self.object_num, 3)
         # print(f'objective_function x: {x}')
-        self.query_point = self.sampler(x)
+        self.query_point = self.sampler(x)  # 采样点云, 同时进行了可视化
 
-        # 计算所有物体之间的碰撞
+        # 计算 motion clip 和所有物体之间的碰撞
         print('Calculating loss_motion_obj...')
         loss_obj2obj = 0
         for i in range(self.object_num):
@@ -359,7 +365,14 @@ class objective_function:
 
         print(f'loss_motion_obj: {loss_obj2obj}, loss_motion_wall: {loss_human_obj}')
         print(f'End objective_function, time: {time.time()-obj_start}\n')
-        return loss_obj2obj * self.obj_loss_scale + loss_human_obj
+
+        loss = loss_obj2obj * self.obj_loss_scale + loss_human_obj
+        if np.abs(loss) < 1e-6:
+            self.sampler(x, save=True)  # 重新可视化
+            print('loss is 0, done.')
+            exit(0)
+
+        return loss
 
 
 def constraints(x):
@@ -389,7 +402,7 @@ def optimize(data: dict):
     x0 = np.concatenate((translation_init, orientation_init), axis=1).reshape(-1)
     sigma0 = 1
 
-    sampler = sample_query_point(data, visualize=False)
+    sampler = sample_query_point(data, visualize=visualize)
     obj = objective_function(data,
                              sampler,
                              obj_loss_scale=10,
