@@ -225,6 +225,34 @@ def query_sdf_normalized(query: np.ndarray, object_name: str):
     return signed_distence
 
 
+def query_bounding_box_normalized(query: np.ndarray, object_name: str):
+    '''
+    query 是正常 scale 的点, 坐标原点是 object translation 的中心, 不是 bounding box 的中心
+    '''
+    sdf = get_sdf_grid(object_name)
+    sdf_grid = sdf['sdf_grid']  # (256, 256, 256)
+    sdf_info = sdf['sdf_info']
+
+    transformed_query = transform_query_inside_01cube(query, sdf_info)  # (k, 3), transformed_query 保证在 [0, 1] 范围内
+    transformed_query = query
+
+    centroid = np.array(sdf_info['centroid'])
+    extents = np.array(sdf_info['extents'])
+
+    min_x = centroid[0] - extents[0]/2
+    max_x = centroid[0] + extents[0]/2
+    min_z = centroid[2] - extents[2]/2
+    max_z = centroid[2] + extents[2]/2
+    # rr.log(f'TEST/{object_name}-bounding_box', rr.Boxes3D(centers=[centroid], sizes=[extents]))
+
+    x_signed_distence = np.maximum(transformed_query[:, 0] - max_x, min_x - transformed_query[:, 0])
+    z_signed_distence = np.maximum(transformed_query[:, 2] - max_z, min_z - transformed_query[:, 2])
+
+    signed_distences = np.maximum(x_signed_distence, z_signed_distence)
+
+    return signed_distences
+
+
 def visualize_sdf_grid(object_name):
     print(f'Visualizing sdf grid for {object_name}')
     rr.init(f"visualize_sdf_{object_name}", spawn=True)
@@ -355,8 +383,9 @@ def main():
     # 测试 sdf_grid 是否正确生成
     object_list = os.listdir(config.OBJECT_ORIGINAL_PATH)
     for object_name in object_list:
-        # visualize_sdf_grid(object_name.split('.')[0])
-        # exit(0)
+        object_name = 'cabinet_base_01'
+        visualize_sdf_grid(object_name.split('.')[0])
+        exit(0)
         get_sdf_grid(object_name.split('.')[0])
     return
 
