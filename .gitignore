@@ -20,6 +20,7 @@ pybullet_data
 MUJOCO_LOG.TXT
 imgs
 outcmaes
+PhyScene
 
 # tmp
 mesh_ds
