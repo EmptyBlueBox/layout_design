@@ -21,19 +21,8 @@ import rerun as rr
 # rr.log("world/asset2", rr.Asset3D(path=path))
 
 
-rr.init("rerun_example_transform3d", spawn=True)
+rr.init("rerun_example_transform3d")
 rr.save("test.rrd")
 
-arrow = rr.Arrows3D(origins=[0, 0, 0], vectors=[0, 1, 0])
-
-rr.log("base", arrow)
-
-rr.log(
-    "base/rotated_scaled1",
-    rr.Transform3D(
-        translation=[0, 0, 1],
-        rotation=RotationAxisAngle(axis=[0, 1, 0], angle=Angle(rad=pi / 4)),
-        scale=2,
-    ),
-)
-rr.log("base/rotated_scaled1", arrow)
+rr.log("simple1", rr.Boxes3D(half_sizes=[2.0, 2.0, 1.0]))
+rr.log("simple2", rr.Boxes3D(half_sizes=[1.0, 1.0, 1.0]))
