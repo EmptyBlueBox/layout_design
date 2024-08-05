@@ -4,6 +4,7 @@ import categories
 import os
 import numpy as np
 import rerun as rr
+from tqdm import tqdm
 
 
 save_path = './3DFRONT-preprocessed/'
@@ -37,7 +38,7 @@ def main():
     all_room_dict = {}  # 用于保存所有房间信息
 
     layouts = os.listdir(config.DATASET_3DFRONT_LAYOUT_PATH).sort()
-    for layout in layouts:
+    for layout in tqdm(layouts):
         layout_path = os.path.join(config.DATASET_3DFRONT_LAYOUT_PATH, layout)
         with open(layout_path, 'r', encoding='utf-8') as f:
             layout_info = json.load(f)
