@@ -18,7 +18,7 @@ dataset/data_pair-hand_picked
 dataset/HOI-M3
 dataset/SHADE
 dataset/TRUMANS
-dataset/3DFRONT-preprocessed
+dataset/3DFRONT-preprocessed*
 
 json2pkl.py
 pybullet_data

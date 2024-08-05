@@ -8,7 +8,7 @@ from tqdm import tqdm
 import re
 
 MIN_OBJ_NUM = 4 # 一个房间中最少的物体数量
-save_path = './3DFRONT-preprocessed/'
+save_path = f'./3DFRONT-preprocessed-MIN_OBJ_NUM_{MIN_OBJ_NUM}/'
 # choose_room_types = 'bedroom'
 # choose_room_types = 'livingroom'
 
@@ -164,8 +164,9 @@ def main():
         np.save(os.path.join(sub_folder, 'scale.npy'), np.array(object_info_tobe_saved['scale']))
 
         # 每种房间的第一个房间写入 Rerun, 用于可视化, 测试用
-        rr.init('3DFRONT-visualization')
-        rr.save(os.path.join(sub_folder, 'visualization.rrd'))
+        room_name=room_type.replace(' ', '')
+        rr.init(f'3DFRONT-visualization-{room_name}')
+        rr.save(os.path.join(sub_folder, f'visualization-{room_name}.rrd'))
         rr.log('', rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)
         for object_idx in range(max_obj_num):
             if object_info_tobe_saved['obj_id'][0][object_idx] == '':
@@ -173,7 +174,7 @@ def main():
             transform = rr.Transform3D(
                 translation=object_info_tobe_saved['translation'][0][object_idx],
                 rotation=rr.Quaternion(xyzw=object_info_tobe_saved['orientation'][0][object_idx]),
-                scale=np.mean(object_info_tobe_saved['scale'][0][object_idx])
+                scale=object_info_tobe_saved['scale'][0][object_idx]
             )
             object_name = object_info_tobe_saved['obj_catagory'][0][object_idx]
             object_name=re.sub(r"\s+", "", object_name)
