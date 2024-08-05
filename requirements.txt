@@ -1,4 +1,4 @@
-python == 3.9.19
+# python == 3.9.19
 smplx == 0.1.28
 matplotlib == 3.9.1
 scipy == 1.13.1
