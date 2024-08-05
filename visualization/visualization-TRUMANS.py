@@ -28,7 +28,7 @@ ONE_OBJECT_ONLY = 1  # 是否只选择 OBJECT_NAME_IF_SAVE 物体
 OBJECT_NAME_IF_SAVE = 'oven'
 
 
-TRUMANS_PATH = config.DATASET_PATH
+TRUMANS_PATH = config.DATASET_TRUMANS_PATH
 
 
 seg_begin_list = np.load(TRUMANS_PATH+'/seg_begin.npy')

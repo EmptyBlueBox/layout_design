@@ -15,12 +15,16 @@ build
 dataset
 !dataset/simplify_obj.py
 !dataset/simplify_obj
+!categories.py
+!dataset-3DFRONT.py
+
 json2pkl.py
 pybullet_data
 MUJOCO_LOG.TXT
 imgs
 outcmaes
 PhyScene
+test-3DFRONT
 
 # tmp
 mesh_ds

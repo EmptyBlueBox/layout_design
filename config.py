@@ -1,30 +1,34 @@
 import torch
 import os
 
-DATASET_SHADE_PATH = '/Users/emptyblue/Documents/Research/layout_design/dataset/SHADE'
-
-DATASET_PATH = '/Users/emptyblue/Documents/Research/layout_design/dataset/TRUMANS'
-OBJECT_ORIGINAL_PATH = os.path.join(DATASET_PATH, 'Object_all/Object_mesh')
-OBJECT_DECIMATED_PATH = os.path.join(DATASET_PATH, 'Object_all/Object_mesh_decimated')
-OBJECT_SDF_GRID_PATH = os.path.join(DATASET_PATH, 'Object_all/Object_SDF_grid')
-OBJECT_SDF_INFO_PATH = os.path.join(DATASET_PATH, 'Object_all/Object_SDF_info')
-
 
 def setup_device():
-    # 检查是否有可用的 GPU
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
-        # 设置当前设备为第一个 GPU
         torch.cuda.set_device(device)
     else:
-        # 如果没有可用的 GPU，则使用 CPU
         device = torch.device("cpu")
     return device
 
 
 device = setup_device()
 
+SMPL_MODEL_PATH = '/Users/emptyblue/Documents/Research/HUMAN_MODELS'
+
+DATASET_SHADE_PATH = '/Users/emptyblue/Documents/Research/layout_design/dataset/SHADE'
+
+DATASET_TRUMANS_PATH = '/Users/emptyblue/Documents/Research/layout_design/dataset/TRUMANS'
+OBJECT_ORIGINAL_PATH = os.path.join(DATASET_TRUMANS_PATH, 'Object_all/Object_mesh')
+OBJECT_DECIMATED_PATH = os.path.join(DATASET_TRUMANS_PATH, 'Object_all/Object_mesh_decimated')
+OBJECT_SDF_GRID_PATH = os.path.join(DATASET_TRUMANS_PATH, 'Object_all/Object_SDF_grid')
+OBJECT_SDF_INFO_PATH = os.path.join(DATASET_TRUMANS_PATH, 'Object_all/Object_SDF_info')
+
+DATASET_3DFRONT_ROOT_PATH = '/viscam/data/3D_FRONT_FUTURE/3D_FRONT'
+DATASET_3DFRONT_LAYOUT_PATH = os.path.join(DATASET_3DFRONT_ROOT_PATH, '3D_FRONT')
+DATASET_3DFRONT_TEXTURE_PATH = os.path.join(DATASET_3DFRONT_ROOT_PATH, '3D-FRONT-texture')
+DATASET_3DFUTURE_MODEL_PATH = os.path.join(DATASET_3DFRONT_ROOT_PATH, '3D-FUTURE-model')
+DATASET_3DFUTURE_MODEL_INFO_PATH = os.path.join(DATASET_3DFUTURE_MODEL_PATH, 'model_info.json')
+
+
 ROOM_SHAPE_X = 8
 ROOM_SHAPE_Z = 8
-
-SMPL_MODEL_PATH = '/Users/emptyblue/Documents/Research/HUMAN_MODELS'
