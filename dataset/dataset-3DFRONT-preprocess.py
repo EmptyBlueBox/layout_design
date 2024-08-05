@@ -5,8 +5,9 @@ import os
 import numpy as np
 import rerun as rr
 from tqdm import tqdm
+import re
 
-
+MIN_OBJ_NUM = 4 # 一个房间中最少的物体数量
 save_path = './3DFRONT-preprocessed/'
 # choose_room_types = 'bedroom'
 # choose_room_types = 'livingroom'
@@ -37,8 +38,12 @@ def main():
     # test_room_dict = {k: None for k in chosen_room_types}  # 用于保存测试房间信息
     all_room_dict = {}  # 用于保存所有房间信息
 
-    layouts = os.listdir(config.DATASET_3DFRONT_LAYOUT_PATH).sort()
+    layouts = os.listdir(config.DATASET_3DFRONT_LAYOUT_PATH)
+    layouts.sort()
     for layout in tqdm(layouts):
+        # print(len(all_room_dict))
+        # if len(all_room_dict) == 10: # 测试用, 保证只有20种房间类型
+        #     break
         layout_path = os.path.join(config.DATASET_3DFRONT_LAYOUT_PATH, layout)
         with open(layout_path, 'r', encoding='utf-8') as f:
             layout_info = json.load(f)
@@ -73,8 +78,8 @@ def main():
                          'room_id': room['instanceid'],  # not used
                          'object_list': []}  # list of object_info
 
-            if room['type'] in all_room_dict:  # 如果房间类型已经存在，则跳过, 测试用, 保证每个房间类型只有一个
-                continue
+            # if room['type'] in all_room_dict:  # 测试用, 如果房间类型已经存在，则跳过, 保证每个房间类型只有一个
+            #     continue
 
             children = room['children']
             for child in children:
@@ -86,19 +91,25 @@ def main():
                     continue
 
                 obj_catagory = model_id_2_info[model_jid[idx]]['category']
+                if obj_catagory not in catagory_name_2_super and obj_catagory != None: # 出现数据错误就试图补全, 实际上确实会出现错误
+                    for right_catagory_name in catagory_name_2_super:
+                        if obj_catagory in right_catagory_name:
+                            obj_catagory = right_catagory_name
+                if obj_catagory not in catagory_name_2_super: # 如果补全后还是没有, 则跳过这个错误的物体名字
+                    # print(f'obj_catagory: {obj_catagory} not in catagory_name_2_super')
+                    continue
                 super_category = catagory_name_2_super[obj_catagory]
                 object_info = {'obj_id': model_jid[idx],  # 3D-FUTURE-model id, can be used to access 3D-FUTURE .obj file
                                'super-category': super_category,  # 'Cabinet/Shelf/Desk', ...
                                'obj_catagory': obj_catagory,  # 'Children Cabinet', ...
                                'translation': np.array(child['pos']),  # [x, y, z]
                                'orientation': np.array(child['rot']),  # [x, y, z, w]
-                               'scale': child['scale']}  # [x]
+                               'scale': np.array(child['scale'])}  # [x, y, z]
                 room_info['object_list'].append(object_info)
 
-            # 保存一个房间的信息
-            if room_info['object_list'] == []:  # 如果房间中没有物体，则出现异常
-                raise ValueError('room_info[\'object_list\'] is empty')
-
+            # 保存一个房间的信息, 物体太少就跳过
+            if len(room_info['object_list']) < MIN_OBJ_NUM:
+                continue
             if room_info['room_type'] in all_room_dict:
                 all_room_dict[room_info['room_type']].append(room_info)
             else:
@@ -136,7 +147,7 @@ def main():
             object_info_tobe_saved['obj_catagory'].append([''] * max_obj_num)
             object_info_tobe_saved['translation'].append(np.zeros((max_obj_num, 3)))
             object_info_tobe_saved['orientation'].append(np.zeros((max_obj_num, 4)))
-            object_info_tobe_saved['scale'].append(np.zeros((max_obj_num, 1)))
+            object_info_tobe_saved['scale'].append(np.zeros((max_obj_num, 3)))
             # 遍历房间中的每个物体
             for object_idx, object_info in enumerate(room_info['object_list']):
                 object_info_tobe_saved['obj_id'][room_idx][object_idx] = object_info['obj_id']
@@ -152,8 +163,8 @@ def main():
         np.save(os.path.join(sub_folder, 'orientation.npy'), np.array(object_info_tobe_saved['orientation']))
         np.save(os.path.join(sub_folder, 'scale.npy'), np.array(object_info_tobe_saved['scale']))
 
-        # 第一个房间写入 Rerun, 用于可视化, 测试用
-        rr.init(f'3DFRONT-{room_type}')
+        # 每种房间的第一个房间写入 Rerun, 用于可视化, 测试用
+        rr.init('3DFRONT-visualization')
         rr.save(os.path.join(sub_folder, 'visualization.rrd'))
         rr.log('', rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)
         for object_idx in range(max_obj_num):
@@ -161,11 +172,13 @@ def main():
                 break
             transform = rr.Transform3D(
                 translation=object_info_tobe_saved['translation'][0][object_idx],
-                rotation=rr.datatypes.Quaternion(object_info_tobe_saved['orientation'][0][object_idx]),
-                scale=object_info_tobe_saved['scale'][0][object_idx]
+                rotation=rr.Quaternion(xyzw=object_info_tobe_saved['orientation'][0][object_idx]),
+                scale=np.mean(object_info_tobe_saved['scale'][0][object_idx])
             )
-            rr.log(f'{object_info_tobe_saved["obj_catagory"][0][object_idx]}', transform)
-            rr.log(f'{object_info_tobe_saved["obj_catagory"][0][object_idx]}', rr.Asset3D(
+            object_name = object_info_tobe_saved['obj_catagory'][0][object_idx]
+            object_name=re.sub(r"\s+", "", object_name)
+            rr.log(f'{object_name}', transform)
+            rr.log(f'{object_name}', rr.Asset3D(
                 path=os.path.join(config.DATASET_3DFUTURE_MODEL_PATH, object_info_tobe_saved['obj_id'][0][object_idx], 'raw_model.obj')
             ))
 
