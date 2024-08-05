@@ -12,11 +12,12 @@ build
 *.obj
 *.rrd
 
-dataset
-!dataset/simplify_obj.py
-!dataset/simplify_obj
-!categories.py
-!dataset-3DFRONT.py
+# dataset
+dataset/chair-vanilla
+dataset/data_pair-hand_picked
+dataset/HOI-M3
+dataset/SHADE
+dataset/TRUMANS
 
 json2pkl.py
 pybullet_data

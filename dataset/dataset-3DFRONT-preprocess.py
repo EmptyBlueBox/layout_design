@@ -1,0 +1,173 @@
+import json
+import config
+import categories
+import os
+import numpy as np
+import rerun as rr
+
+
+save_path = './3DFRONT-preprocessed/'
+# choose_room_types = 'bedroom'
+# choose_room_types = 'livingroom'
+
+
+def get_model_id_2_info(info_path):
+    ID_2_info = {}
+    with open(info_path, 'r') as f:
+        info = json.load(f)
+    for object in info:
+        ID_2_info[object['model_id']] = object
+    return ID_2_info
+
+
+def main():
+    # 物体到物体信息的映射
+    model_id_2_info = get_model_id_2_info(config.DATASET_3DFUTURE_MODEL_INFO_PATH)
+
+    # 所有物体种类的名称列表
+    catagory_name_2_super = {entey['category']: entey['super-category'] for entey in categories._CATEGORIES_3D}
+    catagory_num = len(catagory_name_2_super)
+
+    # if choose_room_types == 'bedroom':
+    #     chosen_room_types = ['Bedroom', 'MasterBedroom', 'SecondBedroom']
+    # if choose_room_types == 'living':
+    #     chosen_room_types = ['LivingDiningRoom', 'LivingRoom']
+    # layout_room_dict = {k: [] for k in chosen_room_types}
+    # test_room_dict = {k: None for k in chosen_room_types}  # 用于保存测试房间信息
+    all_room_dict = {}  # 用于保存所有房间信息
+
+    layouts = os.listdir(config.DATASET_3DFRONT_LAYOUT_PATH).sort()
+    for layout in layouts:
+        layout_path = os.path.join(config.DATASET_3DFRONT_LAYOUT_PATH, layout)
+        with open(layout_path, 'r', encoding='utf-8') as f:
+            layout_info = json.load(f)
+
+        # model_uid & model_jid store all furniture info of all rooms
+        model_uid = []  # used to access 3D-FUTURE-model
+        model_jid = []
+        model_bbox = []
+        for furniture in layout_info['furniture']:
+            if 'valid' in furniture and furniture['valid']:
+                model_uid.append(furniture['uid'])
+                model_jid.append(furniture['jid'])
+                model_bbox.append(furniture['bbox'])
+
+        # mesh refers to wall/floor/etc
+        mesh_uid = []
+        mesh_xyz = []
+        mesh_faces = []
+        for mesh in layout_info['mesh']:
+            mesh_uid.append(mesh['uid'])
+            mesh_xyz.append(np.reshape(mesh['xyz'], [-1, 3]))
+            mesh_faces.append(np.reshape(mesh['faces'], [-1, 3]))
+
+        scene = layout_info['scene']
+        rooms = scene['room']
+        for room in rooms:
+            # 如果房间类型不在指定的房间类型列表中，则跳过
+            # if room['type'] not in chosen_room_types:
+            #     continue
+
+            room_info = {'room_type': room['type'],  # 'Bedroom', 'MasterBedroom', 'SecondBedroom', ...
+                         'room_id': room['instanceid'],  # not used
+                         'object_list': []}  # list of object_info
+
+            if room['type'] in all_room_dict:  # 如果房间类型已经存在，则跳过, 测试用, 保证每个房间类型只有一个
+                continue
+
+            children = room['children']
+            for child in children:
+                ref = child['ref']
+                if ref not in model_uid:
+                    continue
+                idx = model_uid.index(ref)
+                if not os.path.exists(os.path.join(config.DATASET_3DFUTURE_MODEL_PATH, model_jid[idx])):
+                    continue
+
+                obj_catagory = model_id_2_info[model_jid[idx]]['category']
+                super_category = catagory_name_2_super[obj_catagory]
+                object_info = {'obj_id': model_jid[idx],  # 3D-FUTURE-model id, can be used to access 3D-FUTURE .obj file
+                               'super-category': super_category,  # 'Cabinet/Shelf/Desk', ...
+                               'obj_catagory': obj_catagory,  # 'Children Cabinet', ...
+                               'translation': np.array(child['pos']),  # [x, y, z]
+                               'orientation': np.array(child['rot']),  # [x, y, z, w]
+                               'scale': child['scale']}  # [x]
+                room_info['object_list'].append(object_info)
+
+            # 保存一个房间的信息
+            if room_info['object_list'] == []:  # 如果房间中没有物体，则出现异常
+                raise ValueError('room_info[\'object_list\'] is empty')
+
+            if room_info['room_type'] in all_room_dict:
+                all_room_dict[room_info['room_type']].append(room_info)
+            else:
+                all_room_dict[room_info['room_type']] = [room_info]
+
+    # 保存所有房间的信息, 先整理成 npy 数组, 再保存
+    print(f'all room types: {all_room_dict.keys()}')
+    if not os.path.exists(save_path):
+        os.mkdir(save_path)
+
+    # 遍历所有房间类型
+    for room_type, room_type_info in all_room_dict.items():
+        sub_folder = os.path.join(save_path, room_type)
+        if not os.path.exists(sub_folder):
+            os.mkdir(sub_folder)
+
+        object_info_tobe_saved = {
+            'obj_id': [],
+            'super-category': [],
+            'obj_catagory': [],
+            'translation': [],
+            'orientation': [],
+            'scale': []
+        }
+
+        # 计算一类房间中物体的数量最大值, 便于后续整理成一样大小的 npy 数组
+        max_obj_num = 0
+        for room_info in room_type_info:
+            max_obj_num = max(max_obj_num, len(room_info['object_list']))
+        print(f'room type: {room_type}, room_num: {len(room_type_info)}, max_obj_num: {max_obj_num}')
+        # 提取整理房间信息, 遍历每个房间
+        for room_idx, room_info in enumerate(room_type_info):
+            object_info_tobe_saved['obj_id'].append([''] * max_obj_num)
+            object_info_tobe_saved['super-category'].append([''] * max_obj_num)
+            object_info_tobe_saved['obj_catagory'].append([''] * max_obj_num)
+            object_info_tobe_saved['translation'].append(np.zeros((max_obj_num, 3)))
+            object_info_tobe_saved['orientation'].append(np.zeros((max_obj_num, 4)))
+            object_info_tobe_saved['scale'].append(np.zeros((max_obj_num, 1)))
+            # 遍历房间中的每个物体
+            for object_idx, object_info in enumerate(room_info['object_list']):
+                object_info_tobe_saved['obj_id'][room_idx][object_idx] = object_info['obj_id']
+                object_info_tobe_saved['super-category'][room_idx][object_idx] = object_info['super-category']
+                object_info_tobe_saved['obj_catagory'][room_idx][object_idx] = object_info['obj_catagory']
+                object_info_tobe_saved['translation'][room_idx][object_idx] = object_info['translation']
+                object_info_tobe_saved['orientation'][room_idx][object_idx] = object_info['orientation']
+                object_info_tobe_saved['scale'][room_idx][object_idx] = object_info['scale']
+        np.save(os.path.join(sub_folder, 'obj_id.npy'), np.array(object_info_tobe_saved['obj_id']))
+        np.save(os.path.join(sub_folder, 'super-category.npy'), np.array(object_info_tobe_saved['super-category']))
+        np.save(os.path.join(sub_folder, 'obj_catagory.npy'), np.array(object_info_tobe_saved['obj_catagory']))
+        np.save(os.path.join(sub_folder, 'translation.npy'), np.array(object_info_tobe_saved['translation']))
+        np.save(os.path.join(sub_folder, 'orientation.npy'), np.array(object_info_tobe_saved['orientation']))
+        np.save(os.path.join(sub_folder, 'scale.npy'), np.array(object_info_tobe_saved['scale']))
+
+        # 第一个房间写入 Rerun, 用于可视化, 测试用
+        rr.init(f'3DFRONT-{room_type}')
+        rr.save(os.path.join(sub_folder, 'visualization.rrd'))
+        rr.log('', rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)
+        for object_idx in range(max_obj_num):
+            if object_info_tobe_saved['obj_id'][0][object_idx] == '':
+                break
+            transform = rr.Transform3D(
+                translation=object_info_tobe_saved['translation'][0][object_idx],
+                rotation=rr.datatypes.Quaternion(object_info_tobe_saved['orientation'][0][object_idx]),
+                scale=object_info_tobe_saved['scale'][0][object_idx]
+            )
+            rr.log(f'{object_info_tobe_saved["obj_catagory"][0][object_idx]}', transform)
+            rr.log(f'{object_info_tobe_saved["obj_catagory"][0][object_idx]}', rr.Asset3D(
+                path=os.path.join(config.DATASET_3DFUTURE_MODEL_PATH, object_info_tobe_saved['obj_id'][0][object_idx], 'raw_model.obj')
+            ))
+
+
+if __name__ == '__main__':
+    main()
