@@ -29,6 +29,8 @@ DATASET_3DFRONT_TEXTURE_PATH = os.path.join(DATASET_3DFRONT_ROOT_PATH, '3D-FRONT
 DATASET_3DFUTURE_MODEL_PATH = os.path.join(DATASET_3DFRONT_ROOT_PATH, '3D-FUTURE-model')
 DATASET_3DFUTURE_MODEL_INFO_PATH = os.path.join(DATASET_3DFUTURE_MODEL_PATH, 'model_info.json')
 
+DATA_HOLODECK_PATH = '/Users/emptyblue/Documents/Research/layout_design/dataset/HOLODECK'
+OBJATHOR_BASE = '/Users/emptyblue/.objathor-assets/2023_09_23/assets/'
 
 ROOM_SHAPE_X = 8
 ROOM_SHAPE_Z = 8

@@ -19,6 +19,7 @@ dataset/HOI-M3
 dataset/SHADE
 dataset/TRUMANS
 dataset/3DFRONT-preprocessed*
+dataset/HOLODECK
 
 json2pkl.py
 pybullet_data
