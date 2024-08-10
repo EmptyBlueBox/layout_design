@@ -11,6 +11,7 @@ from scipy.spatial.transform import Rotation as R
 
 HOLODECK_NAME = 'a_DiningRoom_with_round_table_-2024-08-07-14-52-49-547177'
 HOLODECK_NAME = 'a_warehouse_full_of_things-2024-08-07-14-41-48-293829'
+HOLODECK_NAME = 'a_LivingDiningRoom_with_table,-2024-08-07-14-47-17-407752'
 
 json_name = HOLODECK_NAME.split('-')[0]
 holodeck_config = os.path.join(config.DATA_HOLODECK_PATH, HOLODECK_NAME, f'{json_name}.json')

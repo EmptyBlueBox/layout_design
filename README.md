@@ -11,3 +11,4 @@
 ## Useful websites
 1. URDF visualization: https://gkjohnson.github.io/urdf-loaders/javascript/example/bundle/
 2. Inverse Dynamics in Mujoco: https://www.danaukes.com/work-blog/2024-03-11-double-pendulum-inverse/
+3. TRUMANS dataset: https://drive.google.com/drive/folders/1CPw_cQcQAP_wbMuQ89rREQmMtEMd-2Hz?usp=sharing
