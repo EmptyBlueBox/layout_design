@@ -8,7 +8,7 @@ import re
 import config
 from utils.mesh_utils import compute_vertex_normals
 
-MIN_OBJ_NUM = 5 # 一个房间中最少的物体数量
+MIN_OBJ_NUM = 5  # 一个房间中最少的物体数量
 save_path = f'./3DFRONT-preprocessed-MIN_OBJ_NUM_{MIN_OBJ_NUM}/'
 SAVE_HOUSE = False
 
@@ -66,7 +66,7 @@ def main():
             mesh_uid.append(mesh['uid'])
             mesh_vertices.append(np.reshape(mesh['xyz'], [-1, 3]))
             mesh_faces.append(np.reshape(mesh['faces'], [-1, 3]))
-            
+
             # print(f'mesh uid: {mesh["uid"]}')
             # print(f'    mesh aid: {mesh["aid"]}')
             # print(f'    mesh jid: {mesh["jid"]}')
@@ -75,11 +75,11 @@ def main():
             if SAVE_HOUSE:
                 if mesh["type"] == 'Ceiling':
                     rr.log(f'Ceilings/{mesh_uid[-1]}', rr.Mesh3D(
-                    vertex_positions=mesh_vertices[-1],
-                    triangle_indices=mesh_faces[-1],
-                    vertex_normals=compute_vertex_normals(mesh_vertices[-1], mesh_faces[-1])
+                        vertex_positions=mesh_vertices[-1],
+                        triangle_indices=mesh_faces[-1],
+                        vertex_normals=compute_vertex_normals(mesh_vertices[-1], mesh_faces[-1])
                     ))
-            
+
         # print(f'mesh num: {len(mesh_uid)}')
         scene = layout_info['scene']
         # print(f'scene keys: {scene.keys()}')
@@ -110,11 +110,11 @@ def main():
                     continue
 
                 obj_catagory = model_id_2_info[model_jid[idx]]['category']
-                if obj_catagory not in catagory_name_2_super and obj_catagory != None: # 出现数据错误就试图补全, 实际上确实会出现错误
+                if obj_catagory not in catagory_name_2_super and obj_catagory != None:  # 出现数据错误就试图补全, 实际上确实会出现错误
                     for right_catagory_name in catagory_name_2_super:
                         if obj_catagory in right_catagory_name:
                             obj_catagory = right_catagory_name
-                if obj_catagory not in catagory_name_2_super: # 如果补全后还是没有, 则跳过这个错误的物体名字
+                if obj_catagory not in catagory_name_2_super:  # 如果补全后还是没有, 则跳过这个错误的物体名字
                     continue
                 super_category = catagory_name_2_super[obj_catagory]
                 object_info = {'obj_id': model_jid[idx],  # 3D-FUTURE-model id, can be used to access 3D-FUTURE .obj file
@@ -124,7 +124,7 @@ def main():
                                'orientation': np.array(child['rot']),  # [x, y, z, w]
                                'scale': np.array(child['scale'])}  # [x, y, z]
                 room_info['object_list'].append(object_info)
-                
+
                 if SAVE_HOUSE:
                     transform = rr.Transform3D(
                         translation=object_info['translation'],
@@ -136,7 +136,7 @@ def main():
                     rr.log(f'{room["instanceid"]}/{object_name}', rr.Asset3D(
                         path=os.path.join(config.DATASET_3DFUTURE_MODEL_PATH, object_info['obj_id'], 'raw_model.obj')
                     ))
-                
+
             # 保存一个房间的信息, 物体太少就跳过
             if len(room_info['object_list']) < MIN_OBJ_NUM:
                 continue
@@ -147,7 +147,7 @@ def main():
 
         if SAVE_HOUSE:
             print(f'house {layout} saved as 3DFRONT-layout-{layout}.rrd')
-            exit(0) # 保存了一个房子, 退出
+            exit(0)  # 保存了一个房子, 退出
 
     # 保存所有房子的所有房间的信息, 先整理成 npy 数组, 再保存
     print(f'all room types: {all_room_dict.keys()}')
@@ -198,7 +198,7 @@ def main():
         np.save(os.path.join(sub_folder, 'scale.npy'), np.array(object_info_tobe_saved['scale']))
 
         # 每种房间的第一个房间写入 Rerun, 用于可视化, 测试用
-        room_name=room_type.replace(' ', '')
+        room_name = room_type.replace(' ', '')
         rr.init(f'3DFRONT-visualization-{room_name}')
         rr.save(os.path.join(sub_folder, f'visualization-{room_name}.rrd'))
         rr.log('', rr.ViewCoordinates.RIGHT_HAND_Y_UP, static=True)
@@ -211,7 +211,7 @@ def main():
                 scale=object_info_tobe_saved['scale'][0][object_idx]
             )
             object_name = object_info_tobe_saved['obj_catagory'][0][object_idx]
-            object_name=object_name.replace(' ', '')
+            object_name = object_name.replace(' ', '')
             rr.log(f'{object_name}', transform)
             rr.log(f'{object_name}', rr.Asset3D(
                 path=os.path.join(config.DATASET_3DFUTURE_MODEL_PATH, object_info_tobe_saved['obj_id'][0][object_idx], 'raw_model.obj')

@@ -63,7 +63,7 @@ if SAVE and not os.path.exists(SAVE_PATH):
 
 def load_human():
 
-    human_model = smplx.create(model_path='/Users/emptyblue/Documents/Research/HUMAN_MODELS',
+    human_model = smplx.create(model_path=config.SMPL_MODEL_PATH,
                                model_type='smplx',
                                gender='neutral',
                                use_face_contour=False,
