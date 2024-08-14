@@ -9,6 +9,11 @@ import numpy as np
 import os
 import config
 
+background_path = os.path.join(config.DATASET_TRUMANS_PATH, 'background', 'background.npy')  # (300, 100, 400)
+
+HOLODECK_NAME = 'a_DiningRoom_with_round_table_-2024-08-07-14-52-49-547177'
+background_path = os.path.join(config.DATA_HOLODECK_PATH, HOLODECK_NAME, 'background.npy')  # (300, 100, 400)
+
 save = False
 
 
@@ -67,7 +72,6 @@ def test_original_background(grid_size=(6, 2, 8), downsample_factor=10):
     """
     测试函数：加载背景数据，降采样，计算坐标和颜色。
     """
-    background_path = os.path.join(config.DATASET_TRUMANS_PATH, 'background', 'background.npy')
     background = np.load(background_path)
 
     # 根据grid_size裁剪background
@@ -85,6 +89,7 @@ def test_original_background(grid_size=(6, 2, 8), downsample_factor=10):
     bg_coor, bg_color = calculate_coordinates_and_colors(downsampled_background, grid_size)
 
     red_mask = np.all(bg_color == [255, 0, 0], axis=1)
+    # red_mask = np.any(bg_color != [0, 255, 0], axis=1)
 
     # 过滤出红色的点
     bg_coor = bg_coor[red_mask, :]
@@ -93,9 +98,7 @@ def test_original_background(grid_size=(6, 2, 8), downsample_factor=10):
     # 输出结果
     print("Coordinates shape:", bg_coor.shape)
     print("Colors shape:", bg_color.shape)
-    # 输出结果
-    print("bg_coor:", bg_coor.shape)
-    print("bg_color:", bg_color.shape)
+
     rr.log('point_cloud', rr.Points3D(positions=bg_coor, colors=bg_color))
 
     return
@@ -103,7 +106,10 @@ def test_original_background(grid_size=(6, 2, 8), downsample_factor=10):
 
 def main():
     set_up_rerun()
-    test_original_background((6, 2, 8), 4)
+    test_original_background((6, 2, 8), 1)
+
+    # chair = np.load('../dataset/TRUMANS/background/kitchen_chair_1.npy')
+    # rr.log('chair', rr.Points3D(chair))
 
 
 if __name__ == '__main__':

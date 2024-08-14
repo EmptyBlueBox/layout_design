@@ -6,7 +6,7 @@ import regex as re
 import pickle
 import config
 from scipy.spatial.transform import Rotation as R
-from utils.mesh_utils import compute_vertex_normals, query_sdf_normalized, query_bounding_box_normalized, farthest_point_sampling
+from utils.mesh_utils import compute_vertex_normals, query_TRUMANS_sdf_normalized, query_TRUMANS_bounding_box_normalized, farthest_point_sampling
 import trimesh
 import smplx
 import torch
@@ -352,7 +352,7 @@ class objective_function:
             for j in range(motion_num2):  # 对第二个物体组的每一个 motion trajectory 是一个点云
                 point_cloud_1_when_2_normal = orientation_2.apply(query_point_1[i]-translation_2)
                 # signed_distence = query_sdf_normalized(point_cloud_1_when_2_normal, obj_name2[0])  # 一个点云和一个物体的碰撞深度
-                signed_distence = query_bounding_box_normalized(point_cloud_1_when_2_normal, obj_name2[0])  # 一个点云和一个物体的碰撞深度
+                signed_distence = query_TRUMANS_bounding_box_normalized(point_cloud_1_when_2_normal, obj_name2[0])  # 一个点云和一个物体的碰撞深度
                 negative_mask = signed_distence < 0
                 loss_1 = -np.sum(signed_distence[negative_mask])
                 # if loss_1 > 1e-6:
@@ -361,7 +361,7 @@ class objective_function:
 
                 point_cloud_2_when_1_normal = orientation_1.apply(query_point_2[j]-translation_1)
                 # signed_distence = query_sdf_normalized(point_cloud_2_when_1_normal, obj_name1[0])
-                signed_distence = query_bounding_box_normalized(point_cloud_2_when_1_normal, obj_name1[0])
+                signed_distence = query_TRUMANS_bounding_box_normalized(point_cloud_2_when_1_normal, obj_name1[0])
                 negative_mask = signed_distence < 0
                 loss_2 = -np.sum(signed_distence[negative_mask])
                 # if loss_2 > 1e-6:

@@ -79,7 +79,10 @@ def get_unit_cube_mesh(mesh):
     return trimesh.Trimesh(vertices=vertices, faces=mesh.faces)
 
 
-def get_sdf_grid(object_name: str, grid_dim=256, print_time=False):
+def get_TRUMANS_sdf_grid(object_name: str, grid_dim=256, print_time=False):
+    '''
+    获取 TRUMANS 数据集中一个物体的 SDF 网格和 SDF 信息, 如果有缓存则直接读取, 否则生成并保存
+    '''
     if print_time:
         start_time = time.time()
 
@@ -202,11 +205,11 @@ def trilinear_interpolation_vectorized(data, queries):
     return fxyz
 
 
-def query_sdf_normalized(query: np.ndarray, object_name: str):
+def query_TRUMANS_sdf_normalized(query: np.ndarray, object_name: str):
     '''
     query 是正常 scale 的点, 坐标原点是 object translation 的中心, 不是 bounding box 的中心
     '''
-    sdf = get_sdf_grid(object_name)
+    sdf = get_TRUMANS_sdf_grid(object_name)
     sdf_grid = sdf['sdf_grid']  # (256, 256, 256)
     sdf_info = sdf['sdf_info']
     # print(f'Query point min: {np.min(query, axis=0)}, max: {np.max(query, axis=0)}')
@@ -225,11 +228,11 @@ def query_sdf_normalized(query: np.ndarray, object_name: str):
     return signed_distence
 
 
-def query_bounding_box_normalized(query: np.ndarray, object_name: str):
+def query_TRUMANS_bounding_box_normalized(query: np.ndarray, object_name: str):
     '''
     query 是正常 scale 的点, 坐标原点是 object translation 的中心, 不是 bounding box 的中心
     '''
-    sdf = get_sdf_grid(object_name)
+    sdf = get_TRUMANS_sdf_grid(object_name)
     sdf_grid = sdf['sdf_grid']  # (256, 256, 256)
     sdf_info = sdf['sdf_info']
 
@@ -253,7 +256,7 @@ def query_bounding_box_normalized(query: np.ndarray, object_name: str):
     return signed_distences
 
 
-def visualize_sdf_grid(object_name):
+def visualize_TRUMANS_sdf_grid(object_name):
     print(f'Visualizing sdf grid for {object_name}')
     rr.init(f"visualize_sdf_{object_name}", spawn=True)
 
@@ -272,7 +275,7 @@ def visualize_sdf_grid(object_name):
     print(f'original bounding_box scale: {np.max(unit_mesh.vertices, axis=0)-np.min(unit_mesh.vertices, axis=0)}')
 
     # 生成 marching cube mesh
-    sdf = get_sdf_grid(object_name)
+    sdf = get_TRUMANS_sdf_grid(object_name)
     vertices, faces, _, _ = skimage.measure.marching_cubes(sdf['sdf_grid'], level=0)  # 返回的 mesh 大小和数组大小一样, 所以需要再次归一化
     marching_cube_mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
     marching_cube_mesh = get_unit_cube_mesh(marching_cube_mesh)
@@ -306,7 +309,7 @@ def visualize_sdf_grid(object_name):
     # 测试 query_sdf 用, 生成一些新点, 从 [-1, 1] 采样 100 个三维坐标点然后放缩到真实大小, 给出对应颜色, 大于0为绿色, 小于0为红色
     query = np.random.uniform(-1, 1, (1000, 3))
     query_original_scale = (query)*(np.max(sdf['sdf_info']['extents']))/2 + sdf['sdf_info']['centroid']
-    sd = query_sdf_normalized(query_original_scale, object_name)
+    sd = query_TRUMANS_sdf_normalized(query_original_scale, object_name)
     colors = np.array([[255, 0, 0] if dis < 0 else [0, 255, 0] for dis in sd])
     rr.log('test_distence', rr.Points3D(positions=query, colors=colors, radii=0.02))
 
@@ -384,9 +387,9 @@ def main():
     object_list = os.listdir(config.OBJECT_ORIGINAL_PATH)
     for object_name in object_list:
         object_name = 'cabinet_base_01'
-        visualize_sdf_grid(object_name.split('.')[0])
+        visualize_TRUMANS_sdf_grid(object_name.split('.')[0])
         exit(0)
-        get_sdf_grid(object_name.split('.')[0])
+        get_TRUMANS_sdf_grid(object_name.split('.')[0])
     return
 
 

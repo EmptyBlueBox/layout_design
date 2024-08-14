@@ -20,6 +20,7 @@ dataset/SHADE
 dataset/TRUMANS
 dataset/3DFRONT-preprocessed*
 dataset/HOLODECK
+dataset/OBJATHOR
 
 json2pkl.py
 pybullet_data
@@ -29,6 +30,7 @@ outcmaes
 PhyScene
 test-3DFRONT
 rerun
+rerun_tmp
 
 # tmp
 mesh_ds
