@@ -2,6 +2,7 @@
 Add motion to HOLODECK scene
 Input: HOLODECK_NAME
 Output: HOLODECK/{HOLODECK_NAME}/motion.pkl & *.rrd
+同时可视化物体mesh点云、房间和人
 '''
 import pickle
 import gzip
@@ -46,8 +47,8 @@ def write_objects():
     bb_min = np.array([np.inf, np.inf, np.inf])
     bb_max = np.array([-np.inf, -np.inf, -np.inf])
     for obj_info in holodeck_info['objects']:
-        obj_name = obj_info['assetId']
-        obj_id = obj_info['id']
+        obj_name = obj_info['assetId']  # 一串乱码
+        obj_id = obj_info['id']  # 一个英文名, 有含义
         if '|' in obj_id:
             continue
         obj_path = os.path.join(config.OBJATHOR_BASE, obj_name, f'{obj_name}.pkl.gz')
@@ -66,6 +67,17 @@ def write_objects():
         vertices = np.array([[v['x'], v['y'], v['z']] for v in obj['vertices']])
         vertices = (R_obj_rot*R_obj_y_rot_offset).apply(vertices) + obj_translation
         triangles = np.array([[obj['triangles'][i], obj['triangles'][i+1], obj['triangles'][i+2]] for i in range(0, len(obj['triangles']), 3)])
+
+        # 测试用
+        if 'chair' in obj_id:
+            chair_path = os.path.join(config.OBJECT_ORIGINAL_PATH, 'static_chair_03.obj')
+            mesh = trimesh.load_mesh(chair_path)
+            vertices = mesh.vertices
+            R_y90 = R.from_euler('Y', -90, degrees=True)
+            vertices = (R_y90*R_obj_rot).apply(vertices) + obj_translation + np.array([0, 0.45, 0])
+            triangles = mesh.faces
+        # 测试用
+
         normals = compute_vertex_normals(vertices, triangles)
 
         rr.log(
@@ -104,6 +116,9 @@ def write_objects():
 def write_human(bb_min):
     # write human
     motion_path = os.path.join(config.DATA_HOLODECK_PATH, HOLODECK_NAME, 'motion.pkl')
+    if not os.path.exists(motion_path):  # skip non-exist motion
+        print(f'motion file not exist: {motion_path}')
+        return
     with open(motion_path, 'rb') as f:
         motion = pickle.load(f)
 
@@ -162,6 +177,9 @@ def get_object_in_background(bb_min):
         obj_id = obj_info['id']
         if '|' in obj_id:
             continue
+        if 'chair' not in obj_id:  # skip non-chair, test for TRUMANS
+            print(f'chair: {obj_id}, assetId: {obj_name}')
+            continue
 
         cache_path = os.path.join(config.DATA_OBJATHOR_CACHE_PATH, f'{obj_name}.npy')
         if os.path.exists(cache_path):  # load cache
@@ -171,8 +189,11 @@ def get_object_in_background(bb_min):
         else:  # compute inside points, not exist in cache
             obj_path = os.path.join(config.OBJATHOR_BASE, obj_name, f'{obj_name}.pkl.gz')
 
+            if not os.path.exists(obj_path):  # skip non-exist obj
+                continue
             with gzip.open(obj_path, 'rb') as f:  # load obj mesh
                 obj = pickle.load(f)
+
             obj_y_rot_offset = obj['yRotOffset']
             R_obj_y_rot_offset = R.from_euler('Y', obj_y_rot_offset, degrees=True)
 
@@ -180,6 +201,19 @@ def get_object_in_background(bb_min):
             vertices = (R_obj_y_rot_offset).apply(vertices)
             triangles = np.array([[obj['triangles'][i], obj['triangles'][i+1], obj['triangles'][i+2]] for i in range(0, len(obj['triangles']), 3)])
             mesh = trimesh.Trimesh(vertices=vertices, faces=triangles)  # create mesh
+
+            # 测试用, 用新的直接替代之前的椅子, 之后的都一样
+            if 'chair' in obj_id:
+                print(f'using new chair: {obj_id}, assetId: {obj_name}')
+                chair_path = os.path.join(config.OBJECT_ORIGINAL_PATH, 'static_chair_03.obj')
+                mesh = trimesh.load_mesh(chair_path)
+                vertices = mesh.vertices
+                R_y90 = R.from_euler('Y', -90, degrees=True)
+                vertices = (R_y90).apply(vertices) + np.array([0, 0.45, 0])
+                triangles = mesh.faces
+                mesh = trimesh.Trimesh(vertices=vertices, faces=triangles)
+            # 测试用
+
             print(f'name: {obj_id}, mesh bounding box: {mesh.bounds}, points: ~16000, obj_key: {obj.keys()}')
 
             bbox = mesh.bounds  # get mesh bounding box
