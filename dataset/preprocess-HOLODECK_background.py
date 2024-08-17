@@ -16,7 +16,7 @@ from utils.mesh_utils import compute_vertex_normals
 from scipy.spatial.transform import Rotation as R
 import smplx
 import torch
-import trimesh
+import trimesh  
 
 HOLODECK_NAME = 'a_DiningRoom_with_round_table_-2024-08-07-14-52-49-547177'
 # HOLODECK_NAME = 'a_DiningRoom-2024-08-07-14-59-21-965489'
