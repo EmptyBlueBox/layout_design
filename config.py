@@ -41,5 +41,8 @@ DATA_HOLODECK_PATH = os.path.join(current_file_path, 'dataset', 'HOLODECK')
 OBJATHOR_BASE = '/Users/emptyblue/.objathor-assets/2023_09_23/assets/'
 DATA_OBJATHOR_CACHE_PATH = os.path.join(current_file_path, 'dataset', 'OBJATHOR', 'object_inner_points_cache')
 
+# SELECTED_ASSETS
+SELECTED_ASSETS_PATH = os.path.join(current_file_path, 'dataset', 'SELECTED_ASSETS')
+
 ROOM_SHAPE_X = 8
 ROOM_SHAPE_Z = 8

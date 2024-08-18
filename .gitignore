@@ -19,8 +19,10 @@ dataset/HOI-M3
 dataset/SHADE
 dataset/TRUMANS
 dataset/3DFRONT-preprocessed*
+dataset/3DFRONT
 dataset/HOLODECK
 dataset/OBJATHOR
+dataset/SELECTED_ASSETS
 
 json2pkl.py
 pybullet_data
@@ -31,6 +33,7 @@ PhyScene
 test-3DFRONT
 rerun
 rerun_tmp
+rerun-tmp
 
 # tmp
 mesh_ds

@@ -16,11 +16,14 @@ from utils.mesh_utils import compute_vertex_normals
 from scipy.spatial.transform import Rotation as R
 import smplx
 import torch
-import trimesh  
+import trimesh
 
-HOLODECK_NAME = 'a_DiningRoom_with_round_table_-2024-08-07-14-52-49-547177'
+# HOLODECK_NAME = 'a_DiningRoom_with_round_table_-2024-08-07-14-52-49-547177'
 # HOLODECK_NAME = 'a_DiningRoom-2024-08-07-14-59-21-965489'
 # HOLODECK_NAME = 'a_living_room-2024-08-07-14-16-58-057245'
+# HOLODECK_NAME = 'a_LivingDiningRoom_with_table,-2024-08-07-14-47-17-407752'
+# HOLODECK_NAME = 'a_warehouse_full_of_things-2024-08-07-14-41-48-293829'
+HOLODECK_NAME = 'a_warehouse-2024-08-07-14-38-38-991910'
 json_name = HOLODECK_NAME.split('-')[0]
 save_rrd = False
 
@@ -49,8 +52,8 @@ def write_objects():
     for obj_info in holodeck_info['objects']:
         obj_name = obj_info['assetId']  # 一串乱码
         obj_id = obj_info['id']  # 一个英文名, 有含义
-        if '|' in obj_id:
-            continue
+        # if '|' in obj_id:
+        #     continue
         obj_path = os.path.join(config.OBJATHOR_BASE, obj_name, f'{obj_name}.pkl.gz')
         if not os.path.exists(obj_path):  # skip non-exist obj
             continue
@@ -62,11 +65,15 @@ def write_objects():
             obj = pickle.load(f)
         obj_y_rot_offset = obj['yRotOffset']
         R_obj_y_rot_offset = R.from_euler('Y', obj_y_rot_offset, degrees=True)
-        # print(f'id: {obj_id}, y_rot_offset: {obj_y_rot_offset}')
 
         vertices = np.array([[v['x'], v['y'], v['z']] for v in obj['vertices']])
         vertices = (R_obj_rot*R_obj_y_rot_offset).apply(vertices) + obj_translation
         triangles = np.array([[obj['triangles'][i], obj['triangles'][i+1], obj['triangles'][i+2]] for i in range(0, len(obj['triangles']), 3)])
+
+        # 输出 obj 用
+        mesh = trimesh.Trimesh(vertices=R_obj_y_rot_offset.apply(vertices), faces=triangles)
+        mesh.export(f'OBJATHOR/obj_files/{obj_id}.obj')  # save mesh
+        # 输出 obj 用
 
         # 测试用
         if 'chair' in obj_id:
@@ -289,8 +296,8 @@ def get_background(bb_min):
 def main():
     set_up_rerun()
     bb_min = write_objects()
-    write_human(bb_min)
-    get_background(bb_min)
+    # write_human(bb_min)
+    # get_background(bb_min)
 
 
 if __name__ == '__main__':
