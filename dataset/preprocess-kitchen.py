@@ -64,17 +64,42 @@ room_config = {
             'orientation': 90,
         },
         'food-0': {
-            'translation': [5, 1.1, 1],
+            'translation': [5, 0.39, 1],
             'scale': [1, 1, 1],
             'orientation': 0,
         },
         'food-1': {
-            'translation': [5, 1.1, 3],
+            'translation': [5, 0.74, 3],
             'scale': [1, 1, 1],
             'orientation': 0,
         },
         'food-2': {
-            'translation': [5, 1.1, 5],
+            'translation': [5, 1.09, 5],
+            'scale': [1, 1, 1],
+            'orientation': 0,
+        },
+        'food-3': {
+            'translation': [0.2, 1.27, 1],
+            'scale': [1, 1, 1],
+            'orientation': 0,
+        },
+        'food-4': {
+            'translation': [0.2, 1.83, 3],
+            'scale': [1, 1, 1],
+            'orientation': 0,
+        },
+        'food-5': {
+            'translation': [0.2, 2.15, 5],
+            'scale': [1, 1, 1],
+            'orientation': 0,
+        },
+        'food-6': {
+            'translation': [3, 0.6, 5.6],
+            'scale': [1, 1, 1],
+            'orientation': 0,
+        },
+        'food-7': {
+            'translation': [3, 1.05, 5.6],
             'scale': [1, 1, 1],
             'orientation': 0,
         },
@@ -93,7 +118,7 @@ def set_up_rerun(save_rrd=False):
     rr.set_time_seconds("stable_time", 0)
 
 
-def write_env(room_config=room_config):
+def write_scene(room_config=room_config):
     # write room
     box = room_config['room']
     room_min = np.array([box['x_min'], box['y_min'], box['z_min']])
@@ -114,16 +139,18 @@ def write_env(room_config=room_config):
         normals = object.vertex_normals
 
         center = object.bounding_box.centroid + translation  # 位移之后的中心点
-        size = object.bounding_box.extents / 2  # extents 是边长不是半边长!!!
+        half_size = object.bounding_box.extents / 2  # extents 是边长不是半边长!!!
+        if orientation == 90 or orientation == -90:
+            half_size = half_size[[2, 1, 0]]  # 旋转之后的半边长
 
         offset = np.zeros(3)  # 初始化偏移数组为零
         for i in range(3):
-            if center[i] - size[i] < room_min[i]:
-                offset[i] = center[i] - size[i] - room_min[i]
-            elif center[i] + size[i] > room_max[i]:
-                offset[i] = center[i] + size[i] - room_max[i]
+            if center[i] - half_size[i] < room_min[i]:
+                offset[i] = center[i] - half_size[i] - room_min[i]
+            elif center[i] + half_size[i] > room_max[i]:
+                offset[i] = center[i] + half_size[i] - room_max[i]
 
-        rr.log(obj_name, rr.Transform3D(
+        rr.log(f'objects/{obj_name}', rr.Transform3D(
             translation=center - offset,
             rotation=rr.RotationAxisAngle(axis=(0, 1, 0), degrees=orientation),
             scale=scale
@@ -135,11 +162,11 @@ def write_env(room_config=room_config):
         # mesh = trimesh.Trimesh(vertices, faces)
         # mesh.export(obj_path)
 
-        rr.log(f'{obj_name}/obj', rr.Mesh3D(
+        rr.log(f'objects/{obj_name}/mesh', rr.Mesh3D(
             vertex_positions=vertices,
             triangle_indices=faces,
             vertex_normals=normals))
-        rr.log(f'{obj_name}/bbox', rr.Boxes3D(centers=object.bounding_box.centroid, sizes=object.bounding_box.extents))
+        rr.log(f'objects/{obj_name}/bbox', rr.Boxes3D(centers=object.bounding_box.centroid, sizes=object.bounding_box.extents))
 
 
 def write_human():
@@ -150,6 +177,7 @@ def write_human():
     # with open(motion_path, 'rb') as f:
     #     motion = pickle.load(f)
 
+    # 生成一个简单的运动
     motion = {
         'translation': np.array([[1, 1.5, 3]]),
         'orientation': np.array([[0, 1.57, 0]]),
@@ -197,7 +225,7 @@ def write_human():
 
 def main():
     set_up_rerun()
-    write_env()
+    write_scene()
     write_human()
 
 
