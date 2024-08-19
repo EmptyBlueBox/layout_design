@@ -23,6 +23,7 @@ dataset/3DFRONT
 dataset/HOLODECK
 dataset/OBJATHOR
 dataset/SELECTED_ASSETS
+dataset/TEST_OBJ_FILE
 
 json2pkl.py
 pybullet_data
