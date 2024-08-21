@@ -167,21 +167,21 @@ room_config_new = {
             'scale': [1, 1, 1],
             'orientation': 0,
         },
-        # 'food-0': {
-        #     'translation': [5, 0.39, 1],
-        #     'scale': [1, 1, 1],
-        #     'orientation': 0,
-        # },
-        # 'food-1': {
-        #     'translation': [5, 0.74, 3],
-        #     'scale': [1, 1, 1],
-        #     'orientation': 0,
-        # },
-        # 'food-2': {
-        #     'translation': [5, 1.09, 5],
-        #     'scale': [1, 1, 1],
-        #     'orientation': 0,
-        # },
+        'steak-0': {
+            'translation': [5, 0.39, 1],
+            'scale': [1, 1, 1],
+            'orientation': 0,
+        },
+        'onion-1': {
+            'translation': [5, 0.74, 3],
+            'scale': [1, 1, 1],
+            'orientation': 0,
+        },
+        'tomato-2': {
+            'translation': [5, 1.09, 5],
+            'scale': [1, 1, 1],
+            'orientation': 0,
+        },
         # 'food-3': {
         #     'translation': [0.2, 1.27, 1],
         #     'scale': [1, 1, 1],
@@ -208,8 +208,6 @@ room_config_new = {
         #     'orientation': 0,
         # },
     },
-    'ingredients': {
-    }
 }
 
 
