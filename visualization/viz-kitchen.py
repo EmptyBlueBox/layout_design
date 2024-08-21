@@ -12,8 +12,9 @@ import pickle
 import torch
 import smplx
 from utils.mesh_utils import compute_vertex_normals
+from scipy.spatial.transform import Rotation as R
 
-room_config = {
+room_config_vanilla = {
     'room': {
         'x_min': 0,
         'x_max': 6,
@@ -58,7 +59,7 @@ room_config = {
             'scale': [1, 1, 1],
             'orientation': 90,
         },
-        'worktop': {
+        'table': {
             'translation': [2.5, 0, 3],
             'scale': [1, 1, 1],
             'orientation': 90,
@@ -106,6 +107,111 @@ room_config = {
     }
 }
 
+room_config_new = {
+    'room': {
+        'x_min': 0,
+        'x_max': 6,
+        'y_min': 0,
+        'y_max': 3,
+        'z_min': 0,
+        'z_max': 6,
+    },
+    'objects': {
+        'shelf-0': {
+            'translation': [2, 0, 1],
+            'scale': [1, 1, 1],
+            'orientation': -90,
+        },
+        # 'shelf-1': {
+        #     'translation': [2, 0, 3],
+        #     'scale': [1, 1, 1],
+        #     'orientation': 0,
+        # },
+        'shelf-2': {
+            'translation': [2, 0, 5],
+            'scale': [1, 1, 1],
+            'orientation': 90,
+        },
+        'wall_mounted_shelf-0': {
+            'translation': [3, 1.5, 0],
+            'scale': [1, 1, 1],
+            'orientation': 180,
+        },
+        'wall_mounted_shelf-1': {
+            'translation': [-2, 1.5, 3],
+            'scale': [1, 1, 1],
+            'orientation': -90,
+        },
+        'wall_mounted_shelf-2': {
+            'translation': [3, 1.5, 6],
+            'scale': [1, 1, 1],
+            'orientation': 0,
+        },
+        'fridge_base': {
+            'translation': [8, 0, 8],
+            'scale': [1, 1, 1],
+            'orientation': 180,
+        },
+        'worktop': {
+            'translation': [6, 0, 1],
+            'scale': [1, 1, 1],
+            'orientation': 90,
+        },
+        'stove_top': {
+            'translation': [5.65, 0.85, 0.7],
+            'scale': [1, 1, 1],
+            'orientation': 90,
+        },
+        'hood': {
+            'translation': [6, 2, 0.7],
+            'scale': [1, 1, 1],
+            'orientation': 0,
+        },
+        # 'food-0': {
+        #     'translation': [5, 0.39, 1],
+        #     'scale': [1, 1, 1],
+        #     'orientation': 0,
+        # },
+        # 'food-1': {
+        #     'translation': [5, 0.74, 3],
+        #     'scale': [1, 1, 1],
+        #     'orientation': 0,
+        # },
+        # 'food-2': {
+        #     'translation': [5, 1.09, 5],
+        #     'scale': [1, 1, 1],
+        #     'orientation': 0,
+        # },
+        # 'food-3': {
+        #     'translation': [0.2, 1.27, 1],
+        #     'scale': [1, 1, 1],
+        #     'orientation': 0,
+        # },
+        # 'food-4': {
+        #     'translation': [0.2, 1.83, 3],
+        #     'scale': [1, 1, 1],
+        #     'orientation': 0,
+        # },
+        # 'food-5': {
+        #     'translation': [0.2, 2.15, 5],
+        #     'scale': [1, 1, 1],
+        #     'orientation': 0,
+        # },
+        # 'food-6': {
+        #     'translation': [3, 0.6, 5.6],
+        #     'scale': [1, 1, 1],
+        #     'orientation': 0,
+        # },
+        # 'food-7': {
+        #     'translation': [3, 1.05, 5.6],
+        #     'scale': [1, 1, 1],
+        #     'orientation': 0,
+        # },
+    },
+    'ingredients': {
+    }
+}
+
 
 def set_up_rerun(save_rrd=False):
     rr.init('Visualization: Kitchen', spawn=not save_rrd)
@@ -118,7 +224,7 @@ def set_up_rerun(save_rrd=False):
     rr.set_time_seconds("stable_time", 0)
 
 
-def write_scene(room_config=room_config):
+def write_scene(room_config=room_config_new):
     # write room
     box = room_config['room']
     room_min = np.array([box['x_min'], box['y_min'], box['z_min']])
@@ -129,14 +235,12 @@ def write_scene(room_config=room_config):
     objects = room_config['objects']
     for obj_name, obj_config in objects.items():
         translation = obj_config['translation']
-        scale = obj_config['scale']
         orientation = obj_config['orientation']
 
         obj_path = os.path.join(config.SELECTED_ASSETS_PATH, f'{obj_name.split("-")[0]}.obj')
         object = trimesh.load(obj_path)
         vertices = object.vertices
         faces = object.faces
-        normals = object.vertex_normals
 
         center = object.bounding_box.centroid + translation  # 位移之后的中心点
         half_size = object.bounding_box.extents / 2  # extents 是边长不是半边长!!!
@@ -150,22 +254,20 @@ def write_scene(room_config=room_config):
             elif center[i] + half_size[i] > room_max[i]:
                 offset[i] = center[i] + half_size[i] - room_max[i]
 
-        rr.log(f'objects/{obj_name}', rr.Transform3D(
-            translation=center - offset,
-            rotation=rr.RotationAxisAngle(axis=(0, 1, 0), degrees=orientation),
-            scale=scale
-        ))
+        # print(f'obj_name: {obj_name}, offset: {offset}, centroid: {object.bounding_box.centroid}, center: {center}, half_size: {half_size}')
 
-        # # 把物体放到原点并且保存, 运行一次即可
-        # mid_point = object.bounding_box.centroid
-        # vertices = vertices - mid_point
-        # mesh = trimesh.Trimesh(vertices, faces)
-        # mesh.export(obj_path)
-
+        rotation = R.from_euler('xyz', [0, orientation, 0], degrees=True)
+        vertices = rotation.apply(vertices)+translation-offset
         rr.log(f'objects/{obj_name}/mesh', rr.Mesh3D(
             vertex_positions=vertices,
             triangle_indices=faces,
-            vertex_normals=normals))
+            vertex_normals=compute_vertex_normals(vertices, faces)))
+
+        rr.log(f'objects/{obj_name}/bbox', rr.Transform3D(
+            # scale=scale,
+            translation=center - offset,
+            rotation=rr.RotationAxisAngle(axis=(0, 1, 0), degrees=orientation),
+        ))
         rr.log(f'objects/{obj_name}/bbox', rr.Boxes3D(centers=object.bounding_box.centroid, sizes=object.bounding_box.extents))
 
 
