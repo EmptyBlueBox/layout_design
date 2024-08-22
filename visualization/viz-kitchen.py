@@ -16,11 +16,17 @@ import smplx
 from utils.mesh_utils import compute_vertex_normals
 from scipy.spatial.transform import Rotation as R
 import json
+import sys
+sys.path.append('/Users/emptyblue/Documents/Research/FLEX/')
+
 
 with open('/Users/emptyblue/Documents/Research/layout_design/dataset/SELECTED_ASSETS/kitchen.json', 'r') as f:
     room_config_new = json.load(f)
 
-shelf_name_save_for_FLEX = 'shelf'  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
+shelf_name_save_for_FLEX = 'wall_mounted_shelf'  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
+# shelf_name_save_for_FLEX = 'shelf'  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
+
+HUMAN_PARAMS_ROOT = '/Users/emptyblue/Documents/Research/layout_design/dataset/SELECTED_ASSETS/save'  # 来自 FLEX 的人类参数
 
 
 def set_up_rerun(save_rrd=False):
@@ -43,35 +49,35 @@ def write_scene(room_config=room_config_new):
 
     # write fixtures
     fixtures = room_config['fixture']
-    for obj_name, obj_configs in fixtures.items():
+    for fixture_name, obj_configs in fixtures.items():
         # 架子保存为 npz 格式, 给FLEX用的
-        if obj_name == shelf_name_save_for_FLEX:
+        if fixture_name == shelf_name_save_for_FLEX:
             print(f'saving {shelf_name_save_for_FLEX} mesh for FLEX')
 
-            obj_path = os.path.join(config.SELECTED_ASSETS_PATH, 'fixtures', f'{obj_name}.obj')
+            obj_path = os.path.join(config.SELECTED_ASSETS_PATH, 'fixtures', f'{fixture_name}.obj')
             object_mesh = trimesh.load(obj_path)
             half_size = object_mesh.bounding_box.extents / 2  # extents 是边长不是半边长!!!
             fixture_vertices = object_mesh.vertices
             fixture_faces = object_mesh.faces
 
             R_y_2_z_up = R.from_euler('XYZ', [90, 0, 0], degrees=True)
-            z_up_vertices = R_y_2_z_up.apply(fixture_vertices) + np.array([0, 0, half_size[1]])  # 旋转之后的顶点
+            z_up_vertices = R_y_2_z_up.apply(fixture_vertices) + np.array([0, 0, half_size[1]])  # 旋转平移之后的顶点
             receptacles = {shelf_name_save_for_FLEX: [[z_up_vertices, fixture_faces]]}
             receptacles_path = os.path.join(config.SELECTED_ASSETS_PATH, 'receptacles.npz')
             np.savez(receptacles_path, **receptacles)
 
         # write rerun
         for idx, obj_config in enumerate(obj_configs):
-            obj_path = os.path.join(config.SELECTED_ASSETS_PATH, 'fixtures', f'{obj_name}.obj')
+            obj_path = os.path.join(config.SELECTED_ASSETS_PATH, 'fixtures', f'{fixture_name}.obj')
             object_mesh = trimesh.load(obj_path)
             half_size = object_mesh.bounding_box.extents / 2  # extents 是边长不是半边长!!!
             fixture_vertices = object_mesh.vertices
             fixture_faces = object_mesh.faces
 
-            translation = obj_config['translation']
+            human_translation = obj_config['translation']
             orientation = obj_config['orientation']
 
-            center = object_mesh.bounding_box.centroid + translation  # 位移之后的中心点
+            center = object_mesh.bounding_box.centroid + human_translation  # 位移之后的中心点
             if orientation == 90 or orientation == -90:
                 half_size = half_size[[2, 1, 0]]  # 旋转之后的半边长
 
@@ -83,13 +89,13 @@ def write_scene(room_config=room_config_new):
                     offset[i] = center[i] + half_size[i] - room_max[i]
 
             rotation = R.from_euler('xyz', angles=[0, orientation, 0], degrees=True)
-            fixture_vertices = rotation.apply(fixture_vertices) + translation - offset
+            fixture_vertices = rotation.apply(fixture_vertices) + human_translation - offset
 
             # update json
-            room_config['fixture'][obj_name][idx]['translation'] = translation - offset
+            room_config['fixture'][fixture_name][idx]['translation'] = human_translation - offset
 
             # write rerun
-            rr_path = f'objects/{obj_name}_{idx}/'
+            rr_path = f'fixtures/{fixture_name}/{idx}/'
             rr.log(rr_path+'mesh', rr.Mesh3D(
                 vertex_positions=fixture_vertices,
                 triangle_indices=fixture_faces,
@@ -109,15 +115,25 @@ def write_scene(room_config=room_config_new):
     # 物体与架子的关系, 需要保存为 npz 格式, 给FLEX用的
     dset_info = {}
 
-    # write ingredients
+    # human model
+    human_model = smplx.create(model_path=config.SMPL_MODEL_PATH,
+                               model_type='smplx',
+                               gender='neutral',
+                               num_pca_comps=np.array(24),
+                               batch_size=1).to('cpu').eval()
+
+    # write ingredients and human
     ingredients = room_config['ingredient']
     for obj_name, obj_configs in ingredients.items():
         for idx, obj_config in enumerate(obj_configs):  # idx: 这个物体出现的第几次
             fixture_name = obj_config['fixture']
             fixture_idx = obj_config['fixture_idx']  # 用第几个架子
             offset = obj_config['offset']
+            fixture_path = os.path.join(config.SELECTED_ASSETS_PATH, 'fixtures', f'{fixture_name}.obj')
+            fixture_mesh = trimesh.load(fixture_path)
+            fixture_half_size = fixture_mesh.bounding_box.extents / 2
 
-            translation = np.array(fixtures[fixture_name][fixture_idx]['translation']) + np.array(offset)
+            obj_translation = np.array(fixtures[fixture_name][fixture_idx]['translation']) + np.array(offset)
 
             obj_path = os.path.join(config.SELECTED_ASSETS_PATH, 'ingredients', f'{obj_name}.obj')
             object_mesh = trimesh.load(obj_path)
@@ -131,30 +147,64 @@ def write_scene(room_config=room_config_new):
             z_up_mesh = trimesh.Trimesh(vertices=z_up_vertices, faces=obj_faces)
             z_up_mesh.export(ply_path)
 
-            # 保存相互关系, 给FLEX用的
+            # 保存相互关系, 生成数据给FLEX用的
             if fixture_name == shelf_name_save_for_FLEX:
-                holder_path = os.path.join(config.SELECTED_ASSETS_PATH, 'fixtures', f'{fixture_name}.obj')
-                holder_mesh = trimesh.load(holder_path)
-                holder_half_size = holder_mesh.bounding_box.extents / 2
                 R_y_2_z_up = R.from_euler('XYZ', [90, 0, 0], degrees=True)
-                offset = R_y_2_z_up.apply(offset) + np.array([0, 0, holder_half_size[1]])  # 旋转之后的偏移
-                holder_rotation = R.from_euler('XYZ', angles=[0, 0, -fixtures[fixture_name][fixture_idx]['orientation']], degrees=True)
-                dset_info[f'{obj_name}_{fixture_name}_all_{idx}'] = [offset, holder_rotation.as_matrix(), 0]  # 物体偏移, 旋转矩阵, holder_idx=0 (唯一的架子)
+                offset = R_y_2_z_up.apply(offset) + np.array([0, 0, fixture_half_size[1]])  # 旋转之后的偏移
+                holder_rotation_inv = R.from_euler('XYZ', angles=[0, 0, -fixtures[fixture_name][fixture_idx]['orientation']], degrees=True)
+                dset_info[f'{obj_name}_{fixture_name}_all_{idx}'] = [offset, holder_rotation_inv.as_matrix(), 0]  # 物体偏移, 旋转矩阵, holder_idx=0 (唯一的架子)
 
-            vertex_colors = np.zeros_like(obj_vertices)  # 颜色
+            # 给物体上颜色, 红色的物体代表输出给 FLEX 的物体
+            vertex_colors = np.zeros_like(obj_vertices)
             if fixture_name == shelf_name_save_for_FLEX:
                 vertex_colors = np.ones_like(obj_vertices) * np.array([1, 0, 0])  # 红色
             else:
                 vertex_colors = np.ones_like(obj_vertices) * np.array([0, 1, 0])  # 绿色
-            # write rerun
-            rr_path = f'ingredients/{obj_name}_{idx}/'
+
+            # write objects rerun
+            rr_path = f'ingredients/{obj_name}/{idx}/'
             rr.log(rr_path+'mesh', rr.Mesh3D(
-                vertex_positions=obj_vertices + translation,
+                vertex_positions=obj_vertices + obj_translation,
                 vertex_colors=vertex_colors,  # 颜色
                 triangle_indices=obj_faces,
                 vertex_normals=compute_vertex_normals(obj_vertices, obj_faces)))
 
-            rr.log(rr_path+'bbox', rr.Boxes3D(centers=object_mesh.bounding_box.centroid + translation, sizes=object_mesh.bounding_box.extents))
+            rr.log(rr_path+'bbox', rr.Boxes3D(centers=object_mesh.bounding_box.centroid + obj_translation, sizes=object_mesh.bounding_box.extents))
+
+            # load human params
+            human_params_path = os.path.join(HUMAN_PARAMS_ROOT, obj_name, fixture_name, f'all_{idx}.npz')
+            if not os.path.exists(human_params_path):  # skip non-exist human params
+                continue
+            human_params = dict(np.load(human_params_path, allow_pickle=True))
+            human_params = (human_params['arr_0'].item())['final_results']
+
+            # write human rerun, 以物体作为参考点, 恢复到 y up 的坐标系
+            for idx in range(1):
+                res_i = human_params[idx]
+                # print(f'idx: {idx}, res_i: {res_i.keys()}')
+
+                # R_z_2_y_up1 = R.from_euler('xyz', angles=[0, -90, 0], degrees=True)
+                # R_z_2_y_up2 = R.from_euler('xyz', [-90, -90, 0], degrees=True)
+                # human_translation = R_z_2_y_up1.apply(res_i['transl'].reshape(
+                #     1, 3)-np.array([0, 0, holder_half_size[1]])) + np.array(fixtures[fixture_name][fixture_idx]['translation'])
+                # human_orientation = (R_z_2_y_up2*R.from_matrix(res_i['global_orient'])).as_rotvec().reshape(1, 3)
+                human_translation = res_i['transl'].reshape(1, 3)
+                human_orientation = (R.from_matrix(res_i['global_orient'])).as_rotvec().reshape(1, 3)
+                human_pose = res_i['pose'].reshape(1, 63)
+
+                output = human_model(body_pose=torch.tensor(human_pose, dtype=torch.float32),
+                                     global_orient=torch.tensor(human_orientation, dtype=torch.float32),
+                                     transl=torch.tensor(human_translation, dtype=torch.float32))
+
+                vertices = output.vertices.detach().cpu().numpy()[0]
+                R_z_2_y_up = R.from_euler('xyz', angles=[-90, -90, 0], degrees=True)
+                vertices = R_z_2_y_up.apply(vertices - np.array([0, 0, fixture_half_size[1]])) + \
+                    np.array(fixtures[fixture_name][fixture_idx]['translation'])
+                faces = human_model.faces
+                rr.log(rr_path+f'human_{idx}',
+                       rr.Mesh3D(vertex_positions=vertices,
+                                 triangle_indices=faces,
+                                 vertex_normals=compute_vertex_normals(vertices, faces),))
 
     # 保存物体与架子的关系
     relationships_path = os.path.join(config.SELECTED_ASSETS_PATH, 'dset_info.npz')
@@ -218,7 +268,7 @@ def write_human():
 def main():
     set_up_rerun()
     write_scene()
-    write_human()
+    # write_human()
 
 
 if __name__ == '__main__':

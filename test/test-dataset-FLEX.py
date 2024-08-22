@@ -89,12 +89,12 @@ def write_human():
                                gender='neutral',
                                num_pca_comps=np.array(24),
                                batch_size=1).to('cpu').eval()
-    hand_model = smplx.create(model_path=config.SMPL_MODEL_PATH,
-                              model_type='mano',
-                              gender='neutral',
-                              num_pca_comps=np.array(24),
-                              batch_size=1).to('cpu').eval()
-    for idx in range(5):
+    # hand_model = smplx.create(model_path=config.SMPL_MODEL_PATH,
+    #                           model_type='mano',
+    #                           gender='neutral',
+    #                           num_pca_comps=np.array(24),
+    #                           batch_size=1).to('cpu').eval()
+    for idx in range(1):
         res_i = human_params[idx]
         # print(f'idx: {idx}, res_i: {res_i.keys()}')
 
@@ -113,12 +113,12 @@ def write_human():
                          triangle_indices=faces,
                          vertex_normals=compute_vertex_normals(vertices, faces),))
 
-        hand_vertices = res_i['rh_verts'].reshape(-1, 3)
-        hand_faces = hand_model.faces
-        rr.log(f'human/{idx}/hand',
-               rr.Mesh3D(vertex_positions=hand_vertices,
-                         triangle_indices=hand_faces,
-                         vertex_normals=compute_vertex_normals(hand_vertices, hand_faces),))
+        # hand_vertices = res_i['rh_verts'].reshape(-1, 3)
+        # hand_faces = hand_model.faces
+        # rr.log(f'human/{idx}/hand',
+        #        rr.Mesh3D(vertex_positions=hand_vertices,
+        #                  triangle_indices=hand_faces,
+        #                  vertex_normals=compute_vertex_normals(hand_vertices, hand_faces),))
 
 
 if __name__ == '__main__':
