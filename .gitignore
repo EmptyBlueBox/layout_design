@@ -11,6 +11,8 @@ build
 *.egg-info
 *.obj
 *.rrd
+*.npy
+*.npz
 
 # dataset
 dataset/chair-vanilla

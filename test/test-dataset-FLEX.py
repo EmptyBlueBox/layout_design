@@ -12,21 +12,24 @@ sys.path.append('/Users/emptyblue/Documents/Research/FLEX/')
 
 
 relationships_path = '/Users/emptyblue/Documents/Research/layout_design/test/test-FLEX/ReplicaGrasp/dset_info.npz'
+relationships_path = '/Users/emptyblue/Documents/Research/layout_design/dataset/SELECTED_ASSETS/dset_info.npz'
 
 holder_path = '/Users/emptyblue/Documents/Research/layout_design/test/test-FLEX/ReplicaGrasp/receptacles.npz'
+holder_path = '/Users/emptyblue/Documents/Research/layout_design/dataset/SELECTED_ASSETS/receptacles.npz'
 
 obj_mesh_root = '/Users/emptyblue/Documents/Research/layout_design/test/test-FLEX/obj/contact_meshes'
+obj_mesh_root = '/Users/emptyblue/Documents/Research/layout_design/dataset/SELECTED_ASSETS/ingredients/ply_for_FLEX'
 obj_bps_path = '/Users/emptyblue/Documents/Research/layout_design/test/test-FLEX/obj/bps.npz'  # 不用修改, 对所有物体都是一样的
 obj_info_path = '/Users/emptyblue/Documents/Research/layout_design/test/test-FLEX/obj/obj_info.npy'  # 没用
 
 
-INDEX = 100
+INDEX = 0
 
 motion_path = '/Users/emptyblue/Documents/Research/layout_design/test/test-FLEX/all_0.npz'
 
 
 def set_up_rerun(save_rrd=False):
-    rr.init('Visualization: Kitchen', spawn=not save_rrd)
+    rr.init('Visualization: FLEX', spawn=not save_rrd)
     if save_rrd:
         save_path = 'rerun-tmp'
         if not os.path.exists(save_path):
@@ -39,7 +42,7 @@ def set_up_rerun(save_rrd=False):
 def write_obj():
     relationships = np.load(relationships_path, allow_pickle=True)
     relationships_name = relationships.files[INDEX]
-    relationships_name = 'airplane_receptacle_aabb_TvStnd1_Top3_frl_apartment_tvstand_all_0'  # hard code
+    # relationships_name = 'airplane_receptacle_aabb_TvStnd1_Top3_frl_apartment_tvstand_all_0'  # hard code
     choose_relationship = relationships[relationships_name]
     obj_offset = choose_relationship[0]
     obj_rot_mat = choose_relationship[1]
@@ -52,7 +55,7 @@ def write_obj():
     holder_mesh = holder[holder_name]
     holder_vertices = holder_mesh[0][0]
     holder_faces = holder_mesh[0][1]
-    print(f'holder name: {holder_name}, vertice: {holder_mesh[0][0].shape}, face: {holder_mesh[0][1].shape}')
+    print(f'holder name: {holder_name}, vertice: {holder_vertices.shape}, face: {holder_faces.shape}')
 
     obj_name = relationships_name.split('_')[0]
     obj_mesh = trimesh.load_mesh(f'{obj_mesh_root}/{obj_name}.ply')
@@ -86,8 +89,15 @@ def write_human():
                                gender='neutral',
                                num_pca_comps=np.array(24),
                                batch_size=1).to('cpu').eval()
+    hand_model = smplx.create(model_path=config.SMPL_MODEL_PATH,
+                              model_type='mano',
+                              gender='neutral',
+                              num_pca_comps=np.array(24),
+                              batch_size=1).to('cpu').eval()
     for idx in range(5):
         res_i = human_params[idx]
+        # print(f'idx: {idx}, res_i: {res_i.keys()}')
+
         translation = res_i['transl'].reshape(1, 3)
         orientation = R.from_matrix(res_i['global_orient']).as_rotvec().reshape(1, 3)
         pose = res_i['pose'].reshape(1, 63)
@@ -98,10 +108,17 @@ def write_human():
 
         vertices = output.vertices.detach().cpu().numpy()[0]
         faces = human_model.faces
-        rr.log(f'human/{idx}',
+        rr.log(f'human/{idx}/human',
                rr.Mesh3D(vertex_positions=vertices,
                          triangle_indices=faces,
                          vertex_normals=compute_vertex_normals(vertices, faces),))
+
+        hand_vertices = res_i['rh_verts'].reshape(-1, 3)
+        hand_faces = hand_model.faces
+        rr.log(f'human/{idx}/hand',
+               rr.Mesh3D(vertex_positions=hand_vertices,
+                         triangle_indices=hand_faces,
+                         vertex_normals=compute_vertex_normals(hand_vertices, hand_faces),))
 
 
 if __name__ == '__main__':
