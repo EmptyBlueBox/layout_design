@@ -26,6 +26,7 @@ obj_info_path = '/Users/emptyblue/Documents/Research/layout_design/test/test-FLE
 INDEX = 0
 
 motion_path = '/Users/emptyblue/Documents/Research/layout_design/test/test-FLEX/all_0.npz'
+motion_path = '/Users/emptyblue/Documents/Research/layout_design/dataset/SELECTED_ASSETS/save/onion/shelf/all_0.npz'
 
 
 def set_up_rerun(save_rrd=False):

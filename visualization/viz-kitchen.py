@@ -23,8 +23,8 @@ sys.path.append('/Users/emptyblue/Documents/Research/FLEX/')
 with open('/Users/emptyblue/Documents/Research/layout_design/dataset/SELECTED_ASSETS/kitchen.json', 'r') as f:
     room_config_new = json.load(f)
 
-shelf_name_save_for_FLEX = 'wall_mounted_shelf'  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
-# shelf_name_save_for_FLEX = 'shelf'  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
+# shelf_name_save_for_FLEX = 'wall_mounted_shelf'  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
+shelf_name_save_for_FLEX = 'shelf'  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
 # shelf_name_save_for_FLEX = 'fridge_base'  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
 
 HUMAN_PARAMS_ROOT = '/Users/emptyblue/Documents/Research/layout_design/dataset/SELECTED_ASSETS/save'  # 来自 FLEX 的人类参数
@@ -135,6 +135,7 @@ def write_scene(room_config=room_config_new):
             fixture_path = os.path.join(config.SELECTED_ASSETS_PATH, 'fixtures', f'{fixture_name}.obj')
             fixture_mesh = trimesh.load(fixture_path)
             fixture_half_size = fixture_mesh.bounding_box.extents / 2
+            fixture_y_rot = fixtures[fixture_name][fixture_idx]['orientation']
 
             obj_translation = np.array(fixtures[fixture_name][fixture_idx]['translation']) + np.array(offset)
 
@@ -200,7 +201,7 @@ def write_scene(room_config=room_config_new):
                                      transl=torch.tensor(human_translation, dtype=torch.float32))
 
                 vertices = output.vertices.detach().cpu().numpy()[0]
-                R_z_2_y_up = R.from_euler('xyz', angles=[-90, 180, 0], degrees=True)
+                R_z_2_y_up = R.from_euler('xyz', angles=[-90, fixture_y_rot, 0], degrees=True)
                 vertices = R_z_2_y_up.apply(vertices - np.array([0, 0, fixture_half_size[1]])) + \
                     np.array(fixtures[fixture_name][fixture_idx]['translation'])
                 faces = human_model.faces
