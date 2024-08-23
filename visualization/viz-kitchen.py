@@ -25,6 +25,7 @@ with open('/Users/emptyblue/Documents/Research/layout_design/dataset/SELECTED_AS
 
 shelf_name_save_for_FLEX = 'wall_mounted_shelf'  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
 # shelf_name_save_for_FLEX = 'shelf'  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
+# shelf_name_save_for_FLEX = 'fridge_base'  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
 
 HUMAN_PARAMS_ROOT = '/Users/emptyblue/Documents/Research/layout_design/dataset/SELECTED_ASSETS/save'  # 来自 FLEX 的人类参数
 
@@ -61,7 +62,9 @@ def write_scene(room_config=room_config_new):
             fixture_faces = object_mesh.faces
 
             R_y_2_z_up = R.from_euler('XYZ', [90, 0, 0], degrees=True)
-            z_up_vertices = R_y_2_z_up.apply(fixture_vertices) + np.array([0, 0, half_size[1]])  # 旋转平移之后的顶点
+            # 旋转平移之后的顶点
+            z_up_vertices = R_y_2_z_up.apply(fixture_vertices) + np.array([0, 0, half_size[1]
+                                                                           if fixture_name != 'wall_mounted_shelf' else obj_configs[0]['translation'][1]])
             receptacles = {shelf_name_save_for_FLEX: [[z_up_vertices, fixture_faces]]}
             receptacles_path = os.path.join(config.SELECTED_ASSETS_PATH, 'receptacles.npz')
             np.savez(receptacles_path, **receptacles)
@@ -74,10 +77,10 @@ def write_scene(room_config=room_config_new):
             fixture_vertices = object_mesh.vertices
             fixture_faces = object_mesh.faces
 
-            human_translation = obj_config['translation']
+            fixture_translation = obj_config['translation']
             orientation = obj_config['orientation']
 
-            center = object_mesh.bounding_box.centroid + human_translation  # 位移之后的中心点
+            center = object_mesh.bounding_box.centroid + fixture_translation  # 位移之后的中心点
             if orientation == 90 or orientation == -90:
                 half_size = half_size[[2, 1, 0]]  # 旋转之后的半边长
 
@@ -89,10 +92,10 @@ def write_scene(room_config=room_config_new):
                     offset[i] = center[i] + half_size[i] - room_max[i]
 
             rotation = R.from_euler('xyz', angles=[0, orientation, 0], degrees=True)
-            fixture_vertices = rotation.apply(fixture_vertices) + human_translation - offset
+            fixture_vertices = rotation.apply(fixture_vertices) + fixture_translation - offset
 
             # update json
-            room_config['fixture'][fixture_name][idx]['translation'] = human_translation - offset
+            room_config['fixture'][fixture_name][idx]['translation'] = fixture_translation - offset
 
             # write rerun
             rr_path = f'fixtures/{fixture_name}/{idx}/'
@@ -179,7 +182,7 @@ def write_scene(room_config=room_config_new):
             human_params = (human_params['arr_0'].item())['final_results']
 
             # write human rerun, 以物体作为参考点, 恢复到 y up 的坐标系
-            for idx in range(1):
+            for idx in range(5):
                 res_i = human_params[idx]
                 # print(f'idx: {idx}, res_i: {res_i.keys()}')
 
@@ -197,13 +200,17 @@ def write_scene(room_config=room_config_new):
                                      transl=torch.tensor(human_translation, dtype=torch.float32))
 
                 vertices = output.vertices.detach().cpu().numpy()[0]
-                R_z_2_y_up = R.from_euler('xyz', angles=[-90, -90, 0], degrees=True)
+                R_z_2_y_up = R.from_euler('xyz', angles=[-90, 180, 0], degrees=True)
                 vertices = R_z_2_y_up.apply(vertices - np.array([0, 0, fixture_half_size[1]])) + \
                     np.array(fixtures[fixture_name][fixture_idx]['translation'])
                 faces = human_model.faces
+
+                color = np.array([(4-idx)/4, 0, idx/4])  # 红色到蓝色的人
+                # write human rerun
                 rr.log(rr_path+f'human_{idx}',
                        rr.Mesh3D(vertex_positions=vertices,
                                  triangle_indices=faces,
+                                 vertex_colors=np.ones_like(vertices)*color,
                                  vertex_normals=compute_vertex_normals(vertices, faces),))
 
     # 保存物体与架子的关系
