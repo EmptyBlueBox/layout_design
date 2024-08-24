@@ -12,10 +12,14 @@ desired_fps = 30
 smplx2mujoco = [0, 1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 12, 15, 13, 16, 18, 20, 14, 17, 19, 21]
 
 
-def get_mujoco_data(data_name, _cutoff=1):
+# def get_mujoco_data(data_name, _cutoff=1):
+def get_mujoco_data(human_params, _cutoff=1):
+    '''
+    human_params: dict {'translation': (frame_num, 3), 'orientation': (frame_num, 3), 'poses': (frame_num, 22, 3)}
+    '''
     # 读取human_params数据
-    DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/{data_name}'
-    human_params = pickle.load(open(f'{DATA_FOLDER}/human-params.pkl', 'rb'))
+    # DATA_FOLDER = f'/Users/emptyblue/Documents/Research/layout_design/dataset/chair-vanilla/{data_name}'
+    # human_params = pickle.load(open(f'{DATA_FOLDER}/human-params.pkl', 'rb'))
     frame_num = human_params['poses'].shape[0]
 
     # 计算人体的根结点的位置
@@ -189,7 +193,8 @@ def get_best_z_offset(model, motion_data, plot=False):
     return best_offset
 
 
-def get_torque(motion_name: str):
+# def get_torque(motion_name: str):
+def get_torque(motion_name: dict):
     motion_data = get_mujoco_data(motion_name)
     # 从XML字符串创建MjModel对象
     model = mujoco.MjModel.from_xml_path('../humanoid/smplx_humanoid-only_body.xml')

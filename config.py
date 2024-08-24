@@ -43,6 +43,7 @@ DATA_OBJATHOR_CACHE_PATH = os.path.join(current_file_path, 'dataset', 'OBJATHOR'
 
 # SELECTED_ASSETS
 SELECTED_ASSETS_PATH = os.path.join(current_file_path, 'dataset', 'SELECTED_ASSETS')
+HUMAN_PARAMS_ROOT = '/Users/emptyblue/Documents/Research/layout_design/dataset/SELECTED_ASSETS/save'  # 来自 FLEX 的人类参数
 
 ROOM_SHAPE_X = 8
 ROOM_SHAPE_Z = 8
