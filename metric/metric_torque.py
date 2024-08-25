@@ -28,15 +28,15 @@ def get_mujoco_data(human_params, _cutoff=1):
     xp = np.linspace(0, frame_num/fps, frame_num)
     xf = human_root_position
     human_root_position_interp = np.array([np.interp(x, xp, xf[:, 0]), np.interp(x, xp, xf[:, 1]), np.interp(x, xp, xf[:, 2])]).T
-    for i in range(3):
-        human_root_position_interp[:, i] = butterworth_filter(human_root_position_interp[:, i], cutoff=_cutoff, fs=desired_fps)
+    # for i in range(3):
+    #     human_root_position_interp[:, i] = butterworth_filter(human_root_position_interp[:, i], cutoff=_cutoff, fs=desired_fps)
     human_root_position = human_root_position_interp
     human_root_position = human_root_position[:, [0, 2, 1]]  # 转换为 Mujoco 的坐标系, z up
     human_root_position[:, 1] *= -1  # y轴取反, 因为旋转后的y是之前的-z
-    # 计算人体的根结点的速度
-    human_root_velocity = np.gradient(human_root_position, axis=0) * desired_fps
-    # 计算人体的根结点的加速度
-    human_root_acceleration = np.gradient(human_root_velocity, axis=0) * desired_fps
+    # # 计算人体的根结点的速度
+    # human_root_velocity = np.gradient(human_root_position, axis=0) * desired_fps
+    # # 计算人体的根结点的加速度
+    # human_root_acceleration = np.gradient(human_root_velocity, axis=0) * desired_fps
 
     # 计算人体的欧拉角
     human_rotation_euler = np.zeros_like(human_params['poses'])
@@ -55,38 +55,38 @@ def get_mujoco_data(human_params, _cutoff=1):
 
     # 将人体的欧拉角和root的欧拉角合并, 并将其转换为 Mujoco 的顺序
     human_pose_euler = np.concatenate([human_orientation_euler[:, None, :], human_rotation_euler], axis=1)[:, smplx2mujoco]
-    print(f'human_euler shape: {human_pose_euler.shape}')
+    # print(f'human_euler shape: {human_pose_euler.shape}')
 
-    # Slerp 插值
-    human_pose_euler_interp = np.zeros((x.shape[0], human_pose_euler.shape[1], human_pose_euler.shape[2]))
-    for i in range(human_pose_euler.shape[1]):
-        slerp = Slerp(xp, R.from_euler(seq='xyz', angles=human_pose_euler[:, i], degrees=False))
-        human_pose_euler_interp[:, i] = slerp(x).as_euler('xyz', degrees=False)
-    for i in range(human_pose_euler_interp.shape[1]):
-        for j in range(3):
-            human_pose_euler_interp[:, i, j] = butterworth_filter(human_pose_euler_interp[:, i, j], cutoff=_cutoff, fs=desired_fps)
-    human_pose_euler = human_pose_euler_interp
+    # # Slerp 插值
+    # human_pose_euler_interp = np.zeros((x.shape[0], human_pose_euler.shape[1], human_pose_euler.shape[2]))
+    # for i in range(human_pose_euler.shape[1]):
+    #     slerp = Slerp(xp, R.from_euler(seq='xyz', angles=human_pose_euler[:, i], degrees=False))
+    #     human_pose_euler_interp[:, i] = slerp(x).as_euler('xyz', degrees=False)
+    # for i in range(human_pose_euler_interp.shape[1]):
+    #     for j in range(3):
+    #         human_pose_euler_interp[:, i, j] = butterworth_filter(human_pose_euler_interp[:, i, j], cutoff=_cutoff, fs=desired_fps)
+    # human_pose_euler = human_pose_euler_interp
 
-    # 计算角速度
-    human_pose_angular_velocity = np.gradient(human_pose_euler, axis=0) * desired_fps
-    print(f'human_pose_angular_velocity shape: {human_pose_angular_velocity.shape}')
+    # # 计算角速度
+    # human_pose_angular_velocity = np.gradient(human_pose_euler, axis=0) * desired_fps
+    # print(f'human_pose_angular_velocity shape: {human_pose_angular_velocity.shape}')
 
-    # 计算角加速度
-    human_pose_angular_acceleration = np.gradient(human_pose_angular_velocity, axis=0) * desired_fps
-    print(f'human_pose_angular_acceleration shape: {human_pose_angular_acceleration.shape}')
+    # # 计算角加速度
+    # human_pose_angular_acceleration = np.gradient(human_pose_angular_velocity, axis=0) * desired_fps
+    # print(f'human_pose_angular_acceleration shape: {human_pose_angular_acceleration.shape}')
 
     output = {
         'fps': desired_fps,
         'frame_num': frame_num,
         'human_root_position': human_root_position,
-        'human_root_velocity': human_root_velocity,
-        'human_root_acceleration': human_root_acceleration,
+        # 'human_root_velocity': human_root_velocity,
+        # 'human_root_acceleration': human_root_acceleration,
         'human_pose_euler': human_pose_euler,
-        'human_pose_angular_velocity': human_pose_angular_velocity,
-        'human_pose_angular_acceleration': human_pose_angular_acceleration
+        # 'human_pose_angular_velocity': human_pose_angular_velocity,
+        # 'human_pose_angular_acceleration': human_pose_angular_acceleration
     }
 
-    print(f'finsl root position (chair place): {human_root_position[-1]}')
+    # print(f'finsl root position (chair place): {human_root_position[-1]}')
     return output
 
 
@@ -133,18 +133,18 @@ def plot_mujoco_data(data: dict):
 
 def set_mujoco_data(data, motion_data, frame_num, best_z_offset=0, static=False):
     human_root_position = motion_data['human_root_position']  # (frame_num, 3)
-    human_root_velocity = motion_data['human_root_velocity']  # (frame_num, 3)
-    human_root_acceleration = motion_data['human_root_acceleration']  # (frame_num, 3)
+    # human_root_velocity = motion_data['human_root_velocity']  # (frame_num, 3)
+    # human_root_acceleration = motion_data['human_root_acceleration']  # (frame_num, 3)
     human_pose_euler = motion_data['human_pose_euler']  # (frame_num, 22, 3)
-    human_pose_angular_velocity = motion_data['human_pose_angular_velocity']  # (frame_num, 22, 3)
-    human_pose_angular_acceleration = motion_data['human_pose_angular_acceleration']  # (frame_num, 22, 3)
+    # human_pose_angular_velocity = motion_data['human_pose_angular_velocity']  # (frame_num, 22, 3)
+    # human_pose_angular_acceleration = motion_data['human_pose_angular_acceleration']  # (frame_num, 22, 3)
 
     # 位置
     data.qpos[0:3] = human_root_position[frame_num, 0:3].copy()
     data.qpos[2] += best_z_offset
-    if not static:
-        data.qvel[0:3] = human_root_velocity[frame_num, 0:3].copy()
-        data.qacc[0:3] = human_root_acceleration[frame_num, 0:3].copy()
+    # if not static:
+    #     data.qvel[0:3] = human_root_velocity[frame_num, 0:3].copy()
+    #     data.qacc[0:3] = human_root_acceleration[frame_num, 0:3].copy()
     for j in range(human_pose_euler.shape[1]):  # 0-21
         # 角度
         if j == 0:
@@ -152,11 +152,11 @@ def set_mujoco_data(data, motion_data, frame_num, best_z_offset=0, static=False)
             data.qpos[3:7] = human_quat[[3, 0, 1, 2]].copy()
         else:
             data.qpos[4+3*j:4+3*j+3] = human_pose_euler[frame_num, j].copy()
-        if not static:
-            # 角速度
-            data.qvel[3+3*j:3+3*j+3] = human_pose_angular_velocity[frame_num, j].copy()
-            # 角加速度
-            data.qacc[3+3*j:3+3*j+3] = human_pose_angular_acceleration[frame_num, j].copy()
+        # if not static:
+        #     # 角速度
+        #     data.qvel[3+3*j:3+3*j+3] = human_pose_angular_velocity[frame_num, j].copy()
+        #     # 角加速度
+        #     data.qacc[3+3*j:3+3*j+3] = human_pose_angular_acceleration[frame_num, j].copy()
 
 
 def get_best_z_offset(model, motion_data, plot=False):
@@ -175,7 +175,7 @@ def get_best_z_offset(model, motion_data, plot=False):
 
     min_extra_force = np.min(np.abs(root_extra_force))
     best_offset = offset_list[np.argmin(np.abs(root_extra_force))]
-    print(f'Best offset: {best_offset:.4f} mm, force: {min_extra_force:.4f} N')
+    # print(f'Best offset: {best_offset:.4f} mm, force: {min_extra_force:.4f} N')
 
     if plot:
         plt.plot(offset_list, root_extra_force)
@@ -198,13 +198,13 @@ def get_torque(motion_name: dict):
     motion_data = get_mujoco_data(motion_name)
     # 从XML字符串创建MjModel对象
     model = mujoco.MjModel.from_xml_path('../humanoid/smplx_humanoid-only_body.xml')
-    print(f'default timestep: {model.opt.timestep}')
+    # print(f'default timestep: {model.opt.timestep}')
     model.opt.disableflags = 1 << 4  # disable contact constraints
     # model.opt.integrator = 0  # change integrator to Euler
 
     data = mujoco.MjData(model)
 
-    print([model.body(i).name for i in range(model.nbody)])
+    # print([model.body(i).name for i in range(model.nbody)])
     # print(f'Number of geoms in the model: {model.ngeom}')
     # print(f'Number of joints in the model: {model.njnt}')
     # print(f'Number of degrees of freedom in the model: {model.nv}')
@@ -224,7 +224,7 @@ def get_torque(motion_name: dict):
         torque = data.qfrc_inverse.copy()
         torque_est.append(torque)
     torque_est = np.array(torque_est).reshape(-1, 23, 3)
-    print(f'torque_est shape: {torque_est.shape}')
+    # print(f'torque_est shape: {torque_est.shape}')
     model.opt.disableflags = 0  # enable contact constraints
     return torque_est
 

@@ -329,7 +329,7 @@ def bbox_loss(room_config, viz=False):
     for fixture_name, fixture_configs in fixture_config_all.items():
         for idx, fixture_config in enumerate(fixture_configs):            
             # load fixture bbox from cache
-            cache_name = f"{fixture_name}_{idx}"
+            cache_name = f"{fixture_name}"
             if cache_name in cache_bbox:
                 bbox_half_size = cache_bbox[cache_name]  # (3,)
             else:
@@ -343,6 +343,8 @@ def bbox_loss(room_config, viz=False):
             bbox_orientation = fixture_config["orientation"]  # (1,), degree
             
             # update tmp cache
+            if bbox_orientation == 90 or bbox_orientation == -90:
+                bbox_half_size = bbox_half_size[[2, 1, 0]]  # (3,)
             bboxs_halfsize.append(bbox_half_size)
             bboxs_translation.append(bbox_translation)
             bboxs_orientation.append(bbox_orientation)
@@ -379,7 +381,7 @@ def bbox_loss(room_config, viz=False):
 def fatigue_loss(room_config, viz=False):
     torque_sum=0
     
-    ingredient_configs = room_config["human"]
+    ingredient_configs = room_config["ingredient"]
     for ingredient_name, ingredient_configs in ingredient_configs.items():
         for idx, human_config in enumerate(ingredient_configs):
             cache_name=f"{ingredient_name}_{idx}"
@@ -403,12 +405,15 @@ def fatigue_loss(room_config, viz=False):
                 human_pose = human_params[0]["pose"].reshape(1, 21, 3)
                 
                 human_params = {'translation': human_translation, 'orientation': human_orientation, 'poses': human_pose}
-                est_torque = get_torque(human_params)
+                est_torque = get_torque(human_params).reshape(23,3)
                 
                 #15,16左臂, 19,20右臂, 2左腿, 6右腿
                 all_candidates_idx = [15,16,19,20,2,6]
-                all_candidates_torque = est_torque[all_candidates_idx]
+                all_candidates_torque = np.linalg.norm(est_torque[all_candidates_idx], axis=1)
+                print(f'{cache_name}: {all_candidates_torque}')
                 max_torque = np.max(all_candidates_torque)
+                # 更新缓存
+                cache_fatigue[cache_name]=max_torque
             
             torque_sum += max_torque
     
@@ -426,6 +431,7 @@ def distance_loss(room_config, viz=False):
         for idx, fixture_config in enumerate(fixture_configs):            
             # load fixture bbox from cache
             cache_name=f"{fixture_name}_{idx}"
+            print(f'{cache_name} in cache_bbox: {cache_name in cache_bbox}')
             if cache_name in cache_bbox:
                 bbox_half_size=cache_bbox[cache_name] # (3,)
             else:
@@ -447,12 +453,13 @@ def distance_loss(room_config, viz=False):
     ingredient_in_shelf={} # {物体名: [架子名+id]}
     shelf_ingredients_direction={} # {架子名+id+物体名: 5*[x,z]}
     
-    ingredient_configs = room_config["human"]
+    ingredient_configs = room_config["ingredient"]
     for ingredient_name, ingredient_configs in ingredient_configs.items():
-        for idx, human_config in enumerate(ingredient_configs):
+        for idx, ingredient_config in enumerate(ingredient_configs):
             
-            fixture_name = human_config["fixture"]
-            fixture_hash=f"{fixture_name}_{idx}"
+            fixture_name = ingredient_config["fixture"]
+            fixture_idx = ingredient_config["fixture_idx"]
+            fixture_hash=f"{fixture_name}_{fixture_idx}"
             shelf_has_ingredient[fixture_hash]=[ingredient_name] if fixture_hash not in ingredient_in_shelf else ingredient_in_shelf[fixture_hash]+[ingredient_name]
             ingredient_in_shelf[ingredient_name]=[fixture_hash] if ingredient_name not in ingredient_in_shelf else ingredient_in_shelf[ingredient_name]+[fixture_hash]
             
@@ -470,7 +477,7 @@ def distance_loss(room_config, viz=False):
                     human_params = dict(np.load(human_params_path, allow_pickle=True))
                     human_params = (human_params["arr_0"].item())["final_results"]
                     
-                    human_translation = human_params[motion_idx]["transl"].reshape(1, 3)
+                    human_translation = human_params[motion_idx]["transl"].reshape(-1)
                     R_z_2_y_up = R.from_euler("xyz", angles=[-90, bboxs_orientation[fixture_hash], 0], degrees=True)
                     tmp_translation = R_z_2_y_up.apply(human_translation)
                     all_human_translation.append(tmp_translation[[0,2]])
@@ -484,22 +491,41 @@ def distance_loss(room_config, viz=False):
     now=np.array([3,5])
     way_points=['start']
     total_distance=0
+    prev_shelf_ingredients_direction=None
     for need_ingredient in path:
         potential_shelf=ingredient_in_shelf[need_ingredient]
         min_distance = np.inf
         next_shelf_hash=None
-        vector_to_shelf=None
-        for shelf_hash in potential_shelf:
+        vector_to_shelf=None #上一个架子到下一个架子的方向
+        
+        # 选择最近的有下一个物品的架子, shelf+id
+        for shelf_hash in potential_shelf: 
             dis=np.linalg.norm(bboxs_translation[shelf_hash]-now)
             if dis<min_distance:
                 min_distance=dis
                 next_shelf_hash=shelf_hash
                 vector_to_shelf=bboxs_translation[shelf_hash]-now
-        now=bboxs_translation[next_shelf_hash]+shelf_ingredients_direction[f'{next_shelf_hash}_{need_ingredient}']
-        way_points.append(next_shelf_hash) # 选择最近的架子, shelf+id
+                
+        # 下一个架子的所有motion方向
+        candidate_ingredients=np.array(shelf_ingredients_direction[f'{next_shelf_hash}_{need_ingredient}'])
+        # 看看每一个motion哪一个和来时候的方向最接近
+        try_all_motion = np.dot(np.tile(vector_to_shelf, (5, 1)), candidate_ingredients.T)
+        min_idx=np.argmin(try_all_motion)
+        #更新当前位置
+        now=bboxs_translation[next_shelf_hash]+candidate_ingredients[min_idx]
+        # 选择最近的架子, shelf+id 放到路径中
+        way_points.append(next_shelf_hash)
+        # 更新总距离
         total_distance+=min_distance
-        if np.dot(vector_to_shelf, shelf_ingredients_direction[f'{next_shelf_hash}_{need_ingredient}'])>0: # 穿过了架子
+        # 穿过了目标架子
+        if np.dot(vector_to_shelf, candidate_ingredients[min_idx])>0: 
             total_distance+=np.sum(bboxs_halfsize[next_shelf_hash])/2
+        # 穿过了上一个架子, 利用保存的上一个motion相对上一个架子的方向
+        if prev_shelf_ingredients_direction is not None:
+            if np.dot(vector_to_shelf, prev_shelf_ingredients_direction)<0:
+                total_distance+=np.sum(bboxs_halfsize[next_shelf_hash])/2
+        # 更新上一个架子的方向
+        prev_shelf_ingredients_direction=candidate_ingredients[min_idx]
             
     return total_distance, way_points
 
@@ -585,16 +611,20 @@ def loss_func(room_config, viz=False, epoch=0):
 
     # bbox loss
     val_bbox_loss=bbox_loss(room_config, viz)
+    print(f'bbox_loss: {val_bbox_loss}')
+    print(f'cache_bbox: {cache_bbox}')
 
     # fatigue loss
     val_fatigue_loss=fatigue_loss(room_config, viz)
+    print(f'fatigue_loss: {val_fatigue_loss}')
 
     # distance loss
     val_distance_loss, waypoints=distance_loss(room_config, viz)
+    print(f'distance_loss: {val_distance_loss}')
     
-    print(f'bbox_loss: {val_bbox_loss}, fatigue_loss: {val_fatigue_loss}, distance_loss: {val_distance_loss}')
     print(f'waypoints: {waypoints}')
     loss=weight_bbox*val_bbox_loss+weight_fatigue*val_fatigue_loss+weight_distance*val_distance_loss
+    print(f'loss: {loss}, loss_bbox: {val_bbox_loss}, loss_fatigue: {val_fatigue_loss}, loss_distance: {val_distance_loss}')
 
     return loss
 
@@ -662,7 +692,7 @@ def main():
     # write_init_scene_human()
     
     # test loss_func
-    bbox_loss(room_config_new, viz=True)
+    loss_func(room_config_new, viz=False)
 
 
 if __name__ == "__main__":
