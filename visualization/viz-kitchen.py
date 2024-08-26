@@ -18,14 +18,17 @@ from scipy.spatial.transform import Rotation as R
 import json
 import sys
 from metric.metric_torque import get_torque
+import copy
+import cma
 
 sys.path.append("/Users/emptyblue/Documents/Research/FLEX/")
 
 # Hyperparameters
 ROOM_RESOLUTION = 1  # 1m
-weight_bbox = 1
+weight_bbox = 100
 weight_fatigue = 1
 weight_distance = 1
+weight_add = 100
 path=['bread','bacon','onion','bread','steak','tomato','broccoli','bread']
 
 shelf_name_save_for_FLEX = 'wall_mounted_shelf'  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
@@ -36,12 +39,15 @@ with open(
     "/Users/emptyblue/Documents/Research/layout_design/dataset/SELECTED_ASSETS/kitchen.json",
     "r",
 ) as f:
-    room_config_new = json.load(f)
+    room_config_all = json.load(f)
 
 # cache for bbox, fatigue, distance, 两次调用 loss_func 可以共用的信息
 cache_bbox={} # bbox value, half size (3,)
 cache_fatigue={} # max_torque value for legs and arms (1,)
 cache_distance={} # x-z plane human translations (5, 2)
+
+way_points=[]
+motion_idx_chosen=[]
 
 def set_up_rerun(app_id='viz: kitchen',save_rrd=False):
     rr.init(app_id, spawn=not save_rrd)
@@ -54,7 +60,7 @@ def set_up_rerun(app_id='viz: kitchen',save_rrd=False):
     rr.set_time_seconds("stable_time", 0)
 
 
-def write_init_scene_human(room_config=room_config_new):
+def write_init_scene_human(room_config=room_config_all):
     # write room
     box = room_config["room"]
     room_min = np.array([box["x_min"], box["y_min"], box["z_min"]])
@@ -162,10 +168,6 @@ def write_init_scene_human(room_config=room_config_new):
                 ),
             )
 
-    # # save updated room_config
-    # with open('/Users/emptyblue/Documents/Research/layout_design/dataset/SELECTED_ASSETS/kitchen_updated.json', 'w') as f:
-    #     json.dump(room_config, f, indent=4)
-
     # 物体与架子的关系, 需要保存为 npz 格式, 给FLEX用的
     dset_info = {}
 
@@ -264,25 +266,49 @@ def write_init_scene_human(room_config=room_config_new):
             )
 
             # load human params
-            human_params_path = os.path.join(
-                config.HUMAN_PARAMS_ROOT, obj_name, fixture_name, f"all_{idx}.npz"
-            )
+            if 'idx_for_viz' in obj_config:
+                idx_for_viz=obj_config['idx_for_viz']
+                human_params_path = os.path.join(
+                    config.HUMAN_PARAMS_ROOT, obj_name, fixture_name, f"all_{idx_for_viz}.npz"
+                )
+            else:
+                human_params_path = os.path.join(
+                    config.HUMAN_PARAMS_ROOT, obj_name, fixture_name, f"all_{idx}.npz"
+                )
+                
             if not os.path.exists(human_params_path):  # skip non-exist human params
                 continue
             human_params = dict(np.load(human_params_path, allow_pickle=True))
             human_params = (human_params["arr_0"].item())["final_results"]
 
             # write human rerun, 以物体作为参考点, 恢复到 y up 的坐标系
-            for idx in range(5):
+            print(way_points, motion_idx_chosen)
+            for idx in (range(5) if way_points == [] else range(len(way_points))):
+                # print(111, idx)
+                if way_points != [] and path[idx] != obj_name:
+                    continue
+                elif way_points != [] and path[idx] == obj_name:
+                    # print(222, idx)
+                    color_idx=idx
+                    idx=motion_idx_chosen[idx]
                 res_i = human_params[idx]
                 # print(f'idx: {idx}, res_i: {res_i.keys()}')
-
-                # R_z_2_y_up1 = R.from_euler('xyz', angles=[0, -90, 0], degrees=True)
-                # R_z_2_y_up2 = R.from_euler('xyz', [-90, -90, 0], degrees=True)
-                # human_translation = R_z_2_y_up1.apply(res_i['transl'].reshape(
-                #     1, 3)-np.array([0, 0, holder_half_size[1]])) + np.array(fixtures[fixture_name][fixture_idx]['translation'])
-                # human_orientation = (R_z_2_y_up2*R.from_matrix(res_i['global_orient'])).as_rotvec().reshape(1, 3)
+                R_z_2_y_up = R.from_euler(
+                    "xyz", angles=[-90, fixture_y_rot, 0], degrees=True
+                )
+                
+                fixture_translation=fixtures[fixture_name][fixture_idx]["translation"]
                 human_translation = res_i["transl"].reshape(1, 3) - (np.array([[0, 0, fixture_half_size[1]]]) if fixture_name == "wall_mounted_shelf" else np.zeros((1,3)))
+                
+                #防止越过边界
+                tmp_transl=R_z_2_y_up.apply(human_translation)
+                if fixture_translation[0]+tmp_transl[0,0]<room_min[0] or fixture_translation[0]+tmp_transl[0,0]>room_max[0]:
+                    continue
+                if fixture_translation[2]+tmp_transl[0,2]<room_min[2] or fixture_translation[2]+tmp_transl[0,2]>room_max[2]:
+                    continue
+                # print(f'{fixture_name}: {fixture_translation}, human_translation: {human_translation}')
+                
+                # 计算人体方向
                 human_orientation = (
                     (R.from_matrix(res_i["global_orient"])).as_rotvec().reshape(1, 3)
                 )
@@ -295,15 +321,17 @@ def write_init_scene_human(room_config=room_config_new):
                 )
 
                 vertices = output.vertices.detach().cpu().numpy()[0]
-                R_z_2_y_up = R.from_euler(
-                    "xyz", angles=[-90, fixture_y_rot, 0], degrees=True
-                )
+
                 vertices = R_z_2_y_up.apply(
                     vertices - np.array([0, 0, fixture_half_size[1]])
-                ) + np.array(fixtures[fixture_name][fixture_idx]["translation"])
+                ) + np.array(fixture_translation)
                 faces = human_model.faces
 
-                color = np.array([(4 - idx) / 4, 0, idx / 4])  # 红色到蓝色的人
+                if way_points == []:
+                    color = np.array([(4 - idx) / 4, 0, idx / 4])  # 红色到蓝色的人
+                else:
+                    print(f'color_idx: {color_idx}')
+                    color=np.array([(7 - color_idx) / 7, 0, color_idx / 7])
                 # write human rerun
                 rr.log(
                     rr_path + f"human_{idx}",
@@ -314,6 +342,8 @@ def write_init_scene_human(room_config=room_config_new):
                         vertex_normals=compute_vertex_normals(vertices, faces),
                     ),
                 )
+                
+                idx=color_idx
 
     # 保存物体与架子的关系
     relationships_path = os.path.join(config.SELECTED_ASSETS_PATH, "dset_info.npz")
@@ -410,17 +440,16 @@ def fatigue_loss(room_config, viz=False):
                 #15,16左臂, 19,20右臂, 2左腿, 6右腿
                 all_candidates_idx = [15,16,19,20,2,6]
                 all_candidates_torque = np.linalg.norm(est_torque[all_candidates_idx], axis=1)
-                print(f'{cache_name}: {all_candidates_torque}')
                 max_torque = np.max(all_candidates_torque)
+                print(f'{cache_name}: {max_torque}')
                 # 更新缓存
                 cache_fatigue[cache_name]=max_torque
             
             torque_sum += max_torque
     
     mean_fatigue = torque_sum / len(ingredient_configs)      
-    return mean_fatigue
-                
-                
+    return mean_fatigue    
+
 
 def distance_loss(room_config, viz=False):
     fixture_config_all = room_config["fixture"]
@@ -431,7 +460,7 @@ def distance_loss(room_config, viz=False):
         for idx, fixture_config in enumerate(fixture_configs):            
             # load fixture bbox from cache
             cache_name=f"{fixture_name}_{idx}"
-            print(f'{cache_name} in cache_bbox: {cache_name in cache_bbox}')
+            # print(f'{cache_name} in cache_bbox: {cache_name in cache_bbox}')
             if cache_name in cache_bbox:
                 bbox_half_size=cache_bbox[cache_name] # (3,)
             else:
@@ -463,16 +492,21 @@ def distance_loss(room_config, viz=False):
             shelf_has_ingredient[fixture_hash]=[ingredient_name] if fixture_hash not in ingredient_in_shelf else ingredient_in_shelf[fixture_hash]+[ingredient_name]
             ingredient_in_shelf[ingredient_name]=[fixture_hash] if ingredient_name not in ingredient_in_shelf else ingredient_in_shelf[ingredient_name]+[fixture_hash]
             
+            if 'idx_for_viz' in ingredient_config:
+                idx=ingredient_config['idx_for_viz']
             cache_name=f"{ingredient_name}_{idx}"
             if cache_name in cache_distance:
                 all_human_translation=cache_distance[cache_name]
+                # print(cache_name,1)
             else:
+                # print(cache_name,2)
                 all_human_translation = []
                 for motion_idx in range(5):
                     human_params_path = os.path.join(
                         config.HUMAN_PARAMS_ROOT, ingredient_name, fixture_name, f"all_{idx}.npz"
                     )
                     if not os.path.exists(human_params_path):  # skip non-exist human params
+                        print(f'{human_params_path} not exist')
                         continue
                     human_params = dict(np.load(human_params_path, allow_pickle=True))
                     human_params = (human_params["arr_0"].item())["final_results"]
@@ -486,10 +520,16 @@ def distance_loss(room_config, viz=False):
                 cache_distance[cache_name]=all_human_translation# 更新缓存
             
             shelf_ingredients_direction[f'{fixture_hash}_{ingredient_name}']=all_human_translation
+            # print(f"{fixture_hash}_{ingredient_name}: {all_human_translation.shape}")
             
+    # print(f'shelf_ingredients_direction: {shelf_ingredients_direction.keys()}')
     # 贪心计算最短路径
     now=np.array([3,5])
-    way_points=['start']
+    global way_points
+    way_points=[]
+    global motion_idx_chosen
+    motion_idx_chosen=[]
+    
     total_distance=0
     prev_shelf_ingredients_direction=None
     for need_ingredient in path:
@@ -506,11 +546,14 @@ def distance_loss(room_config, viz=False):
                 next_shelf_hash=shelf_hash
                 vector_to_shelf=bboxs_translation[shelf_hash]-now
                 
+        # print(f'{next_shelf_hash}_{need_ingredient}')
         # 下一个架子的所有motion方向
         candidate_ingredients=np.array(shelf_ingredients_direction[f'{next_shelf_hash}_{need_ingredient}'])
         # 看看每一个motion哪一个和来时候的方向最接近
         try_all_motion = np.dot(np.tile(vector_to_shelf, (5, 1)), candidate_ingredients.T)
         min_idx=np.argmin(try_all_motion)
+        # 保存选取的motion
+        motion_idx_chosen.append(min_idx)
         #更新当前位置
         now=bboxs_translation[next_shelf_hash]+candidate_ingredients[min_idx]
         # 选择最近的架子, shelf+id 放到路径中
@@ -526,8 +569,9 @@ def distance_loss(room_config, viz=False):
                 total_distance+=np.sum(bboxs_halfsize[next_shelf_hash])/2
         # 更新上一个架子的方向
         prev_shelf_ingredients_direction=candidate_ingredients[min_idx]
-            
-    return total_distance, way_points
+    
+    return total_distance
+
 
 def loss_func(room_config, viz=False, epoch=0):
     box = room_config["room"]
@@ -612,87 +656,106 @@ def loss_func(room_config, viz=False, epoch=0):
     # bbox loss
     val_bbox_loss=bbox_loss(room_config, viz)
     print(f'bbox_loss: {val_bbox_loss}')
-    print(f'cache_bbox: {cache_bbox}')
+    # print(f'cache_bbox: {cache_bbox}')
 
     # fatigue loss
     val_fatigue_loss=fatigue_loss(room_config, viz)
     print(f'fatigue_loss: {val_fatigue_loss}')
 
     # distance loss
-    val_distance_loss, waypoints=distance_loss(room_config, viz)
+    val_distance_loss=distance_loss(room_config, viz)
     print(f'distance_loss: {val_distance_loss}')
     
-    print(f'waypoints: {waypoints}')
-    loss=weight_bbox*val_bbox_loss+weight_fatigue*val_fatigue_loss+weight_distance*val_distance_loss
-    print(f'loss: {loss}, loss_bbox: {val_bbox_loss}, loss_fatigue: {val_fatigue_loss}, loss_distance: {val_distance_loss}')
+    # Add weights
+    shelf_1=room_config['fixture']['shelf'][0]['translation'][[0,2]]
+    shelf_2=room_config['fixture']['shelf'][1]['translation'][[0,2]]
+    fixed_point_1=np.array([4,2])
+    fixed_point_2=np.array([4,4])
+    loss_add=np.linalg.norm(shelf_1-fixed_point_1)+np.linalg.norm(shelf_2-fixed_point_2)
+    print(f'loss_add: {loss_add}')
+    
+    
+    loss=weight_bbox*val_bbox_loss+weight_fatigue*val_fatigue_loss+weight_distance*val_distance_loss+weight_add*loss_add
+    print(f'loss: {loss}, loss_bbox: {val_bbox_loss}, loss_fatigue: {val_fatigue_loss}, loss_distance: {val_distance_loss}, loss_add: {loss_add}\n')
 
+    if val_distance_loss<19:
+        set_up_rerun('best')
+        write_init_scene_human(room_config=room_config)
+        exit(0)
+        
     return loss
 
 
-def write_human():
-    # motion_path = os.path.join(config.DATA_HOLODECK_PATH, 'motion.pkl')
-    # if not os.path.exists(motion_path):  # skip non-exist motion
-    #     print(f'motion file not exist: {motion_path}')
-    #     return
-    # with open(motion_path, 'rb') as f:
-    #     motion = pickle.load(f)
-
-    # 生成一个简单的运动
-    motion = {
-        "translation": np.array([[1, 1.5, 3]]),
-        "orientation": np.array([[0, 1.57, 0]]),
-        "poses": np.zeros((1, 21, 3)),
-    }
-
-    frame_interval = 5
-    fps = 30 / frame_interval
-    motion_translation = motion["translation"][::frame_interval]
-    motion_orientation = motion["orientation"][::frame_interval]
-    motion_poses = motion["poses"][::frame_interval]
-    max_frame_num = motion_poses.shape[0]
-
-    human_model = smplx.create(
-        model_path=config.SMPL_MODEL_PATH,
-        model_type="smplx",
-        gender="neutral",
-        use_face_contour=False,
-        num_betas=10,
-        num_expression_coeffs=10,
-        ext="npz",
-        batch_size=max_frame_num,
-    )
-
-    # print(f'body pose: {motion_pose[:,1:].shape}')
-    # print(f'global orient: {motion_pose[:,0].shape}')
-    # print(f'translation: {motion_translation.shape}')
-    output = human_model(
-        body_pose=torch.tensor(motion_poses, dtype=torch.float32),
-        global_orient=torch.tensor(motion_orientation, dtype=torch.float32),
-        transl=torch.tensor(motion_translation, dtype=torch.float32),
-    )
-    vertices = output.vertices.detach().cpu().numpy()
-    faces = human_model.faces
-
-    for i in range(max_frame_num):
-        time = i / fps
-        rr.set_time_seconds("stable_time", time)
-
-        rr.log(
-            "human",
-            rr.Mesh3D(
-                vertex_positions=vertices[i],
-                triangle_indices=faces,
-                vertex_normals=compute_vertex_normals(vertices[i], faces),
-            ),
-        )
+def wrap_loss_func(x: np.ndarray):
+    scene=[x[0],x[1],x[2],x[3],x[4],x[5],
+                    0,0,1,0,1,6,
+                    0,0,0,1,1,0]
+    scene=generate_one_room_config(scene)
+    return loss_func(scene, viz=False)
 
 
-def main():
-    # set_up_rerun()
-    # write_init_scene_human()
+def generate_one_room_config(params):
+    '''
+    params:
+    [2,2]: shelf position
+    [2]: wall shelf position
+    [6]: which candidate: 0,1,2,3,4,5,6 for non-steak, 0,1 for steak
+    [6]: which shelf: 0,1 for non-steak, 0 for steak, because only 2 shelf, 1 fridge
+    '''
+    tmp_room_config=copy.deepcopy(room_config_all)
+    tmp_room_config['fixture']['shelf'][0]['translation'][0]=params[0]
+    tmp_room_config['fixture']['shelf'][0]['translation'][2]=params[1]
+    tmp_room_config['fixture']['shelf'][1]['translation'][0]=params[2]
+    tmp_room_config['fixture']['shelf'][1]['translation'][2]=params[3]
+    tmp_room_config['fixture']['wall_mounted_shelf'][0]['translation'][0]=params[4]
+    tmp_room_config['fixture']['wall_mounted_shelf'][1]['translation'][0]=params[5]
     
-    # test loss_func
-    loss_func(room_config_new, viz=False)
+    ingredients=['steak','onion','tomato','broccoli','bread','bacon']
+    for index, ingredient in enumerate(ingredients):
+        tmp_room_config['ingredient'][ingredient]=[room_config_all['ingredient'][ingredient][params[6+index]]]
+        tmp_room_config['ingredient'][ingredient][0]['fixture_idx']=params[12+index]
+        tmp_room_config['ingredient'][ingredient][0]['idx_for_viz']=params[6+index]
+        # print(f'{ingredient} idx_for_viz: {params[6+index]}')
+    
+    return tmp_room_config
+
+  
+def main():
+    # bad_scene=[1,1,1.5,4.5,0,0, # 一个很差的初始化场景
+    #                        1,2,3,3,4,5,
+    #                        0,0,0,1,1,1]
+    # bad_scene=generate_one_room_config(bad_scene)
+    # loss_func(bad_scene, viz=False)
+    # set_up_rerun('bad')
+    # write_init_scene_human(bad_scene)
+    
+    # good_scene=[4,2,4,4,2,2, # 一个好一些的场景
+    #                     0,0,1,0,1,6,
+    #                     0,0,0,1,1,0]
+    # good_scene=generate_one_room_config(good_scene)
+    # loss_func(good_scene, viz=False)
+    # set_up_rerun('good')
+    # write_init_scene_human(good_scene)
+    
+    
+    
+    x0 = [4,2,4,4,2,2]
+    sigma0 = 1
+
+    fun = wrap_loss_func  # we could use `functools.partial(cma.ff.elli, cond=1e4)` to change the condition number to 1e4
+    def constraints(x):
+        return [x[0] - 6, x[1] - 6, x[2] - 6, x[3] - 6, x[4] - 6, x[5] - 6,
+                -x[0], -x[1], -x[2], -x[3], -x[4], -x[5]]  # constrain the second variable to <= -1, the second constraint is superfluous
+    cfun = cma.ConstrainedFitnessAL(fun, constraints)  # unconstrained function with adaptive Lagrange multipliers
+
+    x, es = cma.fmin2(cfun, x0, sigma0, {'tolstagnation': 0}, callback=cfun.update)
+    x = es.result.xfavorite  # the original x-value may be meaningless
+    constraints(x)  # show constraint violation values
+
+    best_scene=generate_one_room_config(x)
+    loss_func(best_scene, viz=False)
+    set_up_rerun('best')
+    write_init_scene_human(best_scene)
 
 
 if __name__ == "__main__":
