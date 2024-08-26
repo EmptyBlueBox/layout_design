@@ -678,7 +678,7 @@ def loss_func(room_config, viz=False, epoch=0):
     loss=weight_bbox*val_bbox_loss+weight_fatigue*val_fatigue_loss+weight_distance*val_distance_loss+weight_add*loss_add
     print(f'loss: {loss}, loss_bbox: {val_bbox_loss}, loss_fatigue: {val_fatigue_loss}, loss_distance: {val_distance_loss}, loss_add: {loss_add}\n')
 
-    if val_distance_loss<19:
+    if val_distance_loss<18:
         set_up_rerun('best')
         write_init_scene_human(room_config=room_config)
         exit(0)
@@ -721,21 +721,21 @@ def generate_one_room_config(params):
 
   
 def main():
-    # bad_scene=[1,1,1.5,4.5,0,0, # 一个很差的初始化场景
-    #                        1,2,3,3,4,5,
-    #                        0,0,0,1,1,1]
-    # bad_scene=generate_one_room_config(bad_scene)
-    # loss_func(bad_scene, viz=False)
-    # set_up_rerun('bad')
-    # write_init_scene_human(bad_scene)
+    bad_scene=[1,1,1.5,4.5,0,0, # 一个很差的初始化场景
+                           1,2,3,3,4,5,
+                           0,0,0,1,1,1]
+    bad_scene=generate_one_room_config(bad_scene)
+    loss_func(bad_scene, viz=False)
+    set_up_rerun('bad')
+    write_init_scene_human(bad_scene)
     
-    # good_scene=[4,2,4,4,2,2, # 一个好一些的场景
-    #                     0,0,1,0,1,6,
-    #                     0,0,0,1,1,0]
-    # good_scene=generate_one_room_config(good_scene)
-    # loss_func(good_scene, viz=False)
-    # set_up_rerun('good')
-    # write_init_scene_human(good_scene)
+    good_scene=[4,2,4,4,2,2, # 一个好一些的场景
+                        0,0,1,0,1,6,
+                        0,0,0,1,1,0]
+    good_scene=generate_one_room_config(good_scene)
+    loss_func(good_scene, viz=False)
+    set_up_rerun('good')
+    write_init_scene_human(good_scene)
     
     
     
