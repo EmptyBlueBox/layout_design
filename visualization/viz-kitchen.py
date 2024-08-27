@@ -49,6 +49,41 @@ cache_distance={} # x-z plane human translations (5, 2)
 way_points=[]
 motion_idx_chosen=[]
 
+start_color=np.array([1.,0,0])
+end_color=np.array([0,0,1.])
+frame_time=1.
+ingredient_color={
+    'bread': np.array([234, 194, 131])/255,
+    'bacon': np.array([220, 20, 60])/255,
+    'onion': np.array([255, 240, 245])/255,
+    'steak': np.array([139, 0, 0])/255,
+    'tomato': np.array([1, 0, 0]),
+    'broccoli': np.array([0, 128, 0])/255,
+}
+
+# human model
+human_model = (
+    smplx.create(
+        model_path=config.SMPL_MODEL_PATH,
+        model_type="smplx",
+        gender="neutral",
+        num_pca_comps=np.array(24),
+        batch_size=1,
+    )
+    .to("cpu")
+    .eval()
+)
+
+static_human_params_path = os.path.join(config.HUMAN_PARAMS_ROOT, 'tomato', 'shelf', "all_1.npz")
+static_human_params = dict(np.load(static_human_params_path, allow_pickle=True))
+static_human_params_poses = (static_human_params["arr_0"].item())["final_results"][0]["pose"].reshape(1, 63)
+output = human_model(
+    body_pose=torch.tensor(static_human_params_poses, dtype=torch.float32),
+    global_orient=torch.tensor([[0,1.57,0]], dtype=torch.float32),
+    transl=torch.tensor([[0,1.3,0]], dtype=torch.float32),
+)
+static_vertices = output.vertices.detach().cpu().numpy()[0]
+
 def set_up_rerun(app_id='viz: kitchen',save_rrd=False):
     rr.init(app_id, spawn=not save_rrd)
     if save_rrd:
@@ -152,37 +187,24 @@ def write_init_scene_human(room_config=room_config_all):
                 ),
             )
 
-            rr.log(
-                rr_path + "bbox",
-                rr.Transform3D(
-                    # scale=scale,
-                    translation=center - offset,
-                    rotation=rr.RotationAxisAngle(axis=(0, 1, 0), degrees=orientation),
-                ),
-            )
-            rr.log(
-                rr_path + "bbox",
-                rr.Boxes3D(
-                    centers=object_mesh.bounding_box.centroid,
-                    sizes=object_mesh.bounding_box.extents,
-                ),
-            )
+            # rr.log(
+            #     rr_path + "bbox",
+            #     rr.Transform3D(
+            #         # scale=scale,
+            #         translation=center - offset,
+            #         rotation=rr.RotationAxisAngle(axis=(0, 1, 0), degrees=orientation),
+            #     ),
+            # )
+            # rr.log(
+            #     rr_path + "bbox",
+            #     rr.Boxes3D(
+            #         centers=object_mesh.bounding_box.centroid,
+            #         sizes=object_mesh.bounding_box.extents,
+            #     ),
+            # )
 
     # 物体与架子的关系, 需要保存为 npz 格式, 给FLEX用的
     dset_info = {}
-
-    # human model
-    human_model = (
-        smplx.create(
-            model_path=config.SMPL_MODEL_PATH,
-            model_type="smplx",
-            gender="neutral",
-            num_pca_comps=np.array(24),
-            batch_size=1,
-        )
-        .to("cpu")
-        .eval()
-    )
 
     # write ingredients and human
     ingredients = room_config["ingredient"]
@@ -246,6 +268,7 @@ def write_init_scene_human(room_config=room_config_all):
                 vertex_colors = np.ones_like(obj_vertices) * np.array([0, 1, 0])  # 绿色
 
             # write objects rerun
+            vertex_colors=np.ones_like(obj_vertices)*ingredient_color[obj_name]
             rr_path = f"ingredients/{obj_name}/{idx}/"
             rr.log(
                 rr_path + "mesh",
@@ -257,13 +280,13 @@ def write_init_scene_human(room_config=room_config_all):
                 ),
             )
 
-            rr.log(
-                rr_path + "bbox",
-                rr.Boxes3D(
-                    centers=object_mesh.bounding_box.centroid + obj_translation,
-                    sizes=object_mesh.bounding_box.extents,
-                ),
-            )
+            # rr.log(
+            #     rr_path + "bbox",
+            #     rr.Boxes3D(
+            #         centers=object_mesh.bounding_box.centroid + obj_translation,
+            #         sizes=object_mesh.bounding_box.extents,
+            #     ),
+            # )
 
             # load human params
             if 'idx_for_viz' in obj_config:
@@ -282,7 +305,7 @@ def write_init_scene_human(room_config=room_config_all):
             human_params = (human_params["arr_0"].item())["final_results"]
 
             # write human rerun, 以物体作为参考点, 恢复到 y up 的坐标系
-            print(way_points, motion_idx_chosen)
+            # print(way_points, motion_idx_chosen)
             for idx in (range(5) if way_points == [] else range(len(way_points))):
                 # print(111, idx)
                 if way_points != [] and path[idx] != obj_name:
@@ -304,8 +327,9 @@ def write_init_scene_human(room_config=room_config_all):
                 tmp_transl=R_z_2_y_up.apply(human_translation)
                 if fixture_translation[0]+tmp_transl[0,0]<room_min[0] or fixture_translation[0]+tmp_transl[0,0]>room_max[0]:
                     continue
-                if fixture_translation[2]+tmp_transl[0,2]<room_min[2] or fixture_translation[2]+tmp_transl[0,2]>room_max[2]:
-                    continue
+                # if fixture_translation[2]+tmp_transl[0,2]<room_min[2] or fixture_translation[2]+tmp_transl[0,2]>room_max[2]:
+                #     continue
+                # COMMENT
                 # print(f'{fixture_name}: {fixture_translation}, human_translation: {human_translation}')
                 
                 # 计算人体方向
@@ -327,13 +351,15 @@ def write_init_scene_human(room_config=room_config_all):
                 ) + np.array(fixture_translation)
                 faces = human_model.faces
 
-                if way_points == []:
-                    color = np.array([(4 - idx) / 4, 0, idx / 4])  # 红色到蓝色的人
+                if way_points == []:# 红色到蓝色的人
+                    color=start_color*(4-idx)/4+end_color*idx/4
                 else:
-                    print(f'color_idx: {color_idx}')
-                    color=np.array([(7 - color_idx) / 7, 0, color_idx / 7])
+                    # print(f'color_idx: {color_idx}')
+                    color=start_color*(7-color_idx)/7+end_color*color_idx/7
                 # write human rerun
-                rr.log(
+                if way_points != []:
+                    rr.set_time_seconds("stable_time", color_idx*frame_time)
+                    rr.log(
                     rr_path + f"human_{idx}",
                     rr.Mesh3D(
                         vertex_positions=vertices,
@@ -341,8 +367,87 @@ def write_init_scene_human(room_config=room_config_all):
                         vertex_colors=np.ones_like(vertices) * color,
                         vertex_normals=compute_vertex_normals(vertices, faces),
                     ),
-                )
-                
+                    )                    
+                    # print('test11')
+                    rr.set_time_seconds("stable_time", (color_idx+2)*frame_time)
+                    rr.log(
+                    rr_path + f"human_{idx}",
+                    rr.Mesh3D(
+                        vertex_positions=np.zeros_like(vertices),
+                        triangle_indices=faces,
+                    ),
+                    ) 
+                    rr.set_time_seconds("stable_time", 0)
+                    # print('test22')
+                    if color_idx==0:# 给初始地方也加一个人
+                        rr.set_time_seconds("stable_time", 0)
+                        tmp_static_vertices=static_vertices+np.array([5, 0, 3])
+                        rr.log(
+                        rr_path + f"human0_{idx}",
+                        rr.Mesh3D(
+                            vertex_positions=tmp_static_vertices,
+                            triangle_indices=faces,
+                            vertex_colors=np.ones_like(tmp_static_vertices) * color,
+                            vertex_normals=compute_vertex_normals(tmp_static_vertices, faces),
+                        ),)
+                        rr.set_time_seconds("stable_time", frame_time)
+                        rr.log(
+                        rr_path + f"human0_{idx}",
+                        rr.Mesh3D(
+                            vertex_positions=np.zeros_like(vertices),
+                            triangle_indices=faces,
+                        ),
+                        )
+                    if color_idx==len(way_points)-1: # 给最后地方也加2个人
+                        rr.set_time_seconds("stable_time", color_idx*frame_time)
+                        tmp_static_vertices=static_vertices+np.array([5, 0, 3])
+                        rr.log(
+                        rr_path + f"human_last_worktop_{idx}",
+                        rr.Mesh3D(
+                            vertex_positions=tmp_static_vertices,
+                            triangle_indices=faces,
+                            vertex_colors=np.ones_like(tmp_static_vertices) * color,
+                            vertex_normals=compute_vertex_normals(tmp_static_vertices, faces),
+                        ),)
+                        rr.set_time_seconds("stable_time", (color_idx+1)*frame_time)
+                        rr.log(
+                        rr_path + f"human_last_worktop_{idx}",
+                        rr.Mesh3D(
+                            vertex_positions=np.zeros_like(vertices),
+                            triangle_indices=faces,
+                        ),
+                        )
+                        
+                        rr.set_time_seconds("stable_time", color_idx*frame_time)
+                        tmp_R=R.from_euler('xyz', [0, 180, 0], degrees=True)
+                        tmp_static_vertices=tmp_R.apply(static_vertices)+np.array(room_config_all['fixture']['table'][0]['translation'])+np.array([0.7,0,0])
+                        rr.log(
+                        rr_path + f"human_last_table_{idx}",
+                        rr.Mesh3D(
+                            vertex_positions=tmp_static_vertices,
+                            triangle_indices=faces,
+                            vertex_colors=np.ones_like(tmp_static_vertices) * color,
+                            vertex_normals=compute_vertex_normals(tmp_static_vertices, faces),
+                        ),)
+                        rr.set_time_seconds("stable_time", (color_idx+1)*frame_time)
+                        rr.log(
+                        rr_path + f"human_last_table_{idx}",
+                        rr.Mesh3D(
+                            vertex_positions=np.zeros_like(vertices),
+                            triangle_indices=faces,
+                        ),
+                        )
+                else:
+                    rr.log(
+                        rr_path + f"human_{idx}",
+                        rr.Mesh3D(
+                            vertex_positions=vertices,
+                            triangle_indices=faces,
+                            # vertex_colors=np.ones_like(vertices) * color,
+                            vertex_normals=compute_vertex_normals(vertices, faces),
+                        ),
+                    )
+                    
                 idx=color_idx
 
     # 保存物体与架子的关系
@@ -411,17 +516,22 @@ def bbox_loss(room_config, viz=False):
 def fatigue_loss(room_config, viz=False):
     torque_sum=0
     
+    # print(f'all ingredients: {room_config["ingredient"]}')
+    
     ingredient_configs = room_config["ingredient"]
     for ingredient_name, ingredient_configs in ingredient_configs.items():
+        # print(f'fatigue loss for {ingredient_name}')
         for idx, human_config in enumerate(ingredient_configs):
-            cache_name=f"{ingredient_name}_{idx}"
+            
+            viz_idx=human_config['idx_for_viz'] if 'idx_for_viz' in human_config else idx
+            cache_name=f"{ingredient_name}_{viz_idx}"
             
             if cache_name in cache_fatigue:
                 max_torque=cache_fatigue[cache_name]
             else:
                 fixture_name = human_config["fixture"]
                 human_params_path = os.path.join(
-                    config.HUMAN_PARAMS_ROOT, ingredient_name, fixture_name, f"all_{idx}.npz"
+                    config.HUMAN_PARAMS_ROOT, ingredient_name, fixture_name, f"all_{viz_idx}.npz"
                 )
                 if not os.path.exists(human_params_path):  # skip non-exist human params
                     continue
@@ -441,10 +551,11 @@ def fatigue_loss(room_config, viz=False):
                 all_candidates_idx = [15,16,19,20,2,6]
                 all_candidates_torque = np.linalg.norm(est_torque[all_candidates_idx], axis=1)
                 max_torque = np.max(all_candidates_torque)
-                print(f'{cache_name}: {max_torque}')
+                # print(f'{cache_name}: {max_torque}')
                 # 更新缓存
                 cache_fatigue[cache_name]=max_torque
             
+            # print(f'{cache_name}: {max_torque}')
             torque_sum += max_torque
     
     mean_fatigue = torque_sum / len(ingredient_configs)      
@@ -524,7 +635,7 @@ def distance_loss(room_config, viz=False):
             
     # print(f'shelf_ingredients_direction: {shelf_ingredients_direction.keys()}')
     # 贪心计算最短路径
-    now=np.array([3,5])
+    now=np.array([5,3])
     global way_points
     way_points=[]
     global motion_idx_chosen
@@ -545,17 +656,95 @@ def distance_loss(room_config, viz=False):
                 min_distance=dis
                 next_shelf_hash=shelf_hash
                 vector_to_shelf=bboxs_translation[shelf_hash]-now
-                
+        
+        if viz:
+            time_idx=len(motion_idx_chosen)
+            rr.set_time_seconds("stable_time", time_idx*frame_time)
+            rr.log(
+                f"path/{need_ingredient}",
+                rr.Arrows3D(
+                    origins=[now[0], 1, now[1]],
+                    vectors=[vector_to_shelf[0]/2, 0, vector_to_shelf[1]/2],
+                    colors=start_color*(7-time_idx)/7+end_color*time_idx/7,
+                    radii=0.1,
+                ),
+            )
+            rr.set_time_seconds("stable_time", (time_idx+1)*frame_time)
+            rr.log(
+                f"path/{need_ingredient}",
+                rr.Arrows3D(
+                    origins=[now[0], 0.5, now[1]],
+                    vectors=[0,0,0],
+                ),
+            )
+            rr.set_time_seconds(timeline="stable_time", seconds=0)
+            if time_idx == 7: # 画出回到 [5,3] 和 np.array(room_config_all['fixture']['table'][0]['translation'])-np.array([1,0,0]) 的箭头
+                rr.set_time_seconds("stable_time", 7*frame_time)
+                rr.log(
+                    f"path/top_{need_ingredient}",
+                    rr.Arrows3D(
+                        origins=[now[0]+vector_to_shelf[0], 1, now[1]+vector_to_shelf[1]],
+                        vectors=np.array([5-now[0]-vector_to_shelf[0], 0, 3-now[1]-vector_to_shelf[1]])*2/3,
+                        colors=start_color*(7-time_idx)/7+end_color*time_idx/7,
+                        radii=0.1,
+                    ),
+                )
+                rr.log(
+                    f"path/table_{need_ingredient}",
+                    rr.Arrows3D(
+                        origins=[5, 1, 3],
+                        vectors=(np.array(room_config_all['fixture']['table'][0]['translation'])+np.array([1,0,0])-np.array([5,0,3]))*2/3,
+                        colors=start_color*(7-time_idx)/7+end_color*time_idx/7,
+                        radii=0.1,
+                    ),
+                )
+                rr.set_time_seconds("stable_time", 8*frame_time)
+                rr.log(
+                    f"path/top_{need_ingredient}",
+                    rr.Arrows3D(
+                        origins=[5, 1, 3],
+                        vectors=[0,0,0],
+                    ),
+                )
+                rr.log(
+                    f"path/table_{need_ingredient}",
+                    rr.Arrows3D(
+                        origins=[5, 1, 3],
+                        vectors=[0,0,0],
+                    ),
+                )
+                rr.set_time_seconds(timeline="stable_time", seconds=0)
         # print(f'{next_shelf_hash}_{need_ingredient}')
         # 下一个架子的所有motion方向
         candidate_ingredients=np.array(shelf_ingredients_direction[f'{next_shelf_hash}_{need_ingredient}'])
         # 看看每一个motion哪一个和来时候的方向最接近
         try_all_motion = np.dot(np.tile(vector_to_shelf, (5, 1)), candidate_ingredients.T)
         min_idx=np.argmin(try_all_motion)
-        # 保存选取的motion
-        motion_idx_chosen.append(min_idx)
         #更新当前位置
         now=bboxs_translation[next_shelf_hash]+candidate_ingredients[min_idx]
+        if now[0]<0 or now[0]>6 or now[1]<0 or now[1]>6:
+            idx_mask=np.ones(5, dtype=bool)
+            idx_mask[min_idx]=False
+            min_idx=np.argmin(try_all_motion[idx_mask])
+        now=bboxs_translation[next_shelf_hash]+candidate_ingredients[min_idx]
+        if now[0]<0 or now[0]>6 or now[1]<0 or now[1]>6:
+            idx_mask=np.ones(5, dtype=bool)
+            idx_mask[min_idx]=False
+            min_idx=np.argmin(try_all_motion[idx_mask])
+        now=bboxs_translation[next_shelf_hash]+candidate_ingredients[min_idx]
+        if now[0]<0 or now[0]>6 or now[1]<0 or now[1]>6:
+            idx_mask=np.ones(5, dtype=bool)
+            idx_mask[min_idx]=False
+            min_idx=np.argmin(try_all_motion[idx_mask])
+        now=bboxs_translation[next_shelf_hash]+candidate_ingredients[min_idx]
+        if now[0]<0 or now[0]>6 or now[1]<0 or now[1]>6:
+            idx_mask=np.ones(5, dtype=bool)
+            idx_mask[min_idx]=False
+            min_idx=np.argmin(try_all_motion[idx_mask])
+        now=bboxs_translation[next_shelf_hash]+candidate_ingredients[min_idx]
+        # 保存选取的motion
+        motion_idx_chosen.append(min_idx)
+
         # 选择最近的架子, shelf+id 放到路径中
         way_points.append(next_shelf_hash)
         # 更新总距离
@@ -573,22 +762,24 @@ def distance_loss(room_config, viz=False):
     return total_distance
 
 
-def loss_func(room_config, viz=False, epoch=0):
+def loss_func(room_config, viz=False):
     box = room_config["room"]
     room_min = np.array([box["x_min"], box["y_min"], box["z_min"]])
     room_max = np.array([box["x_max"], box["y_max"], box["z_max"]])
     
-    # write rerun room
-    if viz:
-        set_up_rerun(app_id=f"viz: kitchen_{epoch}", save_rrd=False)
-        rr.log(
-            "room",
-            rr.Boxes3D(
-                centers=[(room_min + room_max) / 2],
-                sizes=[room_max - room_min],
-                colors=[(0.5, 0.5, 0.5, 0.5)],
-            ),
-        )
+    # # write rerun room
+    # if viz:
+    #     set_up_rerun(app_id=f"viz: kitchen_{epoch}", save_rrd=False)
+    #     rr.log(
+    #         "room",
+    #         rr.Boxes3D(
+    #             centers=[(room_min + room_max) / 2],
+    #             sizes=[room_max - room_min],
+    #             colors=[(0.5, 0.5, 0.5, 0.5)],
+    #         ),
+    #     )
+    
+    # print(f'all ingredients: {room_config["ingredient"]}')
 
     fixtures = room_config["fixture"]
     for fixture_name, fixture_configs in fixtures.items():
@@ -623,35 +814,35 @@ def loss_func(room_config, viz=False, epoch=0):
                 fixture_translation - offset
             )
 
-            # write rerun
-            if viz:
-                rr_path = f"fixtures/{fixture_name}/{idx}/"
-                rr.log(
-                    rr_path + "mesh",
-                    rr.Mesh3D(
-                        vertex_positions=fixture_vertices,
-                        triangle_indices=fixture_faces,
-                        vertex_normals=compute_vertex_normals(
-                            fixture_vertices, fixture_faces
-                        ),
-                    ),
-                )
+            # # write rerun
+            # if viz:
+            #     rr_path = f"fixtures/{fixture_name}/{idx}/"
+            #     rr.log(
+            #         rr_path + "mesh",
+            #         rr.Mesh3D(
+            #             vertex_positions=fixture_vertices,
+            #             triangle_indices=fixture_faces,
+            #             vertex_normals=compute_vertex_normals(
+            #                 fixture_vertices, fixture_faces
+            #             ),
+            #         ),
+            #     )
 
-                rr.log(
-                    rr_path + "bbox",
-                    rr.Transform3D(
-                        # scale=scale,
-                        translation=center - offset,
-                        rotation=rr.RotationAxisAngle(axis=(0, 1, 0), degrees=orientation),
-                    ),
-                )
-                rr.log(
-                    rr_path + "bbox",
-                    rr.Boxes3D(
-                        centers=object_mesh.bounding_box.centroid,
-                        sizes=object_mesh.bounding_box.extents,
-                    ),
-                )
+            #     rr.log(
+            #         rr_path + "bbox",
+            #         rr.Transform3D(
+            #             # scale=scale,
+            #             translation=center - offset,
+            #             rotation=rr.RotationAxisAngle(axis=(0, 1, 0), degrees=orientation),
+            #         ),
+            #     )
+            #     rr.log(
+            #         rr_path + "bbox",
+            #         rr.Boxes3D(
+            #             centers=object_mesh.bounding_box.centroid,
+            #             sizes=object_mesh.bounding_box.extents,
+            #         ),
+            #     )
 
     # bbox loss
     val_bbox_loss=bbox_loss(room_config, viz)
@@ -678,10 +869,10 @@ def loss_func(room_config, viz=False, epoch=0):
     loss=weight_bbox*val_bbox_loss+weight_fatigue*val_fatigue_loss+weight_distance*val_distance_loss+weight_add*loss_add
     print(f'loss: {loss}, loss_bbox: {val_bbox_loss}, loss_fatigue: {val_fatigue_loss}, loss_distance: {val_distance_loss}, loss_add: {loss_add}\n')
 
-    if val_distance_loss<18:
-        set_up_rerun('best')
-        write_init_scene_human(room_config=room_config)
-        exit(0)
+    # if val_distance_loss<18:
+    #     set_up_rerun('best')
+    #     write_init_scene_human(room_config=room_config)
+    #     exit(0)
         
     return loss
 
@@ -721,21 +912,32 @@ def generate_one_room_config(params):
 
   
 def main():
-    bad_scene=[1,1,1.5,4.5,0,0, # 一个很差的初始化场景
-                           1,2,3,3,4,5,
-                           0,0,0,1,1,1]
+        
+    room_config_all['fixture']['table'][0]['translation'][0]=3
+    
+    bad_scene=[1,1,1,4,2,2, # 一个很差的初始化场景
+               1,0,1,1,4,5,
+               0,0,1,0,1,1]
     bad_scene=generate_one_room_config(bad_scene)
-    loss_func(bad_scene, viz=False)
     set_up_rerun('bad')
+    loss_func(bad_scene, viz=True)
     write_init_scene_human(bad_scene)
     
-    good_scene=[4,2,4,4,2,2, # 一个好一些的场景
-                        0,0,1,0,1,6,
-                        0,0,0,1,1,0]
+    room_config_all['fixture']['fridge_base'][0]['translation'][2]=0
+    room_config_all['fixture']['worktop'][0]['translation'][2]=8
+    room_config_all['fixture']['stove_top'][0]['translation'][2]=0.7+1.3
+    room_config_all['fixture']['hood'][0]['translation'][2]=0.7+1.3
+    room_config_all['fixture']['table'][0]['translation'][0]=2.5
+
+    good_scene=[4,2,4,4,3,2, # 好的场景
+                0,0,1,0,1,6,
+                0,0,0,1,1,0]
     good_scene=generate_one_room_config(good_scene)
-    loss_func(good_scene, viz=False)
     set_up_rerun('good')
+    loss_func(good_scene, viz=True)
     write_init_scene_human(good_scene)
+    
+    exit(0)
     
     
     
@@ -753,8 +955,8 @@ def main():
     constraints(x)  # show constraint violation values
 
     best_scene=generate_one_room_config(x)
+    set_up_rerun(app_id='best')
     loss_func(best_scene, viz=False)
-    set_up_rerun('best')
     write_init_scene_human(best_scene)
 
 
