@@ -79,6 +79,7 @@ def write_obj():
     rr.log(f'{relationships_name}/{obj_name}',
            rr.Mesh3D(vertex_positions=obj_vertices,
                      triangle_indices=obj_faces,
+                    vertex_colors=np.array([220, 20, 60])/255,
                      vertex_normals=compute_vertex_normals(obj_vertices, obj_faces)))
 
 
@@ -95,7 +96,7 @@ def write_human():
     #                           gender='neutral',
     #                           num_pca_comps=np.array(24),
     #                           batch_size=1).to('cpu').eval()
-    for idx in range(1):
+    for idx in range(6):
         res_i = human_params[idx]
         # print(f'idx: {idx}, res_i: {res_i.keys()}')
 
