@@ -31,8 +31,8 @@ weight_distance = 1
 weight_add = 100
 path=['bread','bacon','onion','bread','steak','tomato','broccoli','bread']
 
-shelf_name_save_for_FLEX = 'wall_mounted_shelf'  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
-# shelf_name_save_for_FLEX = "shelf"  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
+# shelf_name_save_for_FLEX = 'wall_mounted_shelf'  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
+shelf_name_save_for_FLEX = "shelf"  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
 # shelf_name_save_for_FLEX = 'fridge_base'  # 需要保存的架子名称, 同时也保存对应的物体, 物体架子关系
 
 with open(
