@@ -269,6 +269,7 @@ def write_init_scene_human(room_config=room_config_all):
 
             # write objects rerun
             vertex_colors=np.ones_like(obj_vertices)*ingredient_color[obj_name]
+            rr.set_time_seconds("stable_time", 0)
             rr_path = f"ingredients/{obj_name}/{idx}/"
             rr.log(
                 rr_path + "mesh",
@@ -378,6 +379,15 @@ def write_init_scene_human(room_config=room_config_all):
                     ),
                     ) 
                     rr.set_time_seconds("stable_time", 0)
+                    rr.log(
+                    rr_path + f"human_{idx}",
+                    rr.Mesh3D(
+                        vertex_positions=vertices,
+                        triangle_indices=faces,
+                        vertex_colors=np.ones_like(vertices) * color,
+                        vertex_normals=compute_vertex_normals(vertices, faces),
+                    ),
+                    )  
                     # print('test22')
                     if color_idx==0:# 给初始地方也加一个人
                         rr.set_time_seconds("stable_time", 0)
@@ -398,6 +408,7 @@ def write_init_scene_human(room_config=room_config_all):
                             triangle_indices=faces,
                         ),
                         )
+                        rr.set_time_seconds("stable_time", 0)
                     if color_idx==len(way_points)-1: # 给最后地方也加2个人
                         rr.set_time_seconds("stable_time", color_idx*frame_time)
                         tmp_static_vertices=static_vertices+np.array([5, 0, 3])
@@ -555,7 +566,7 @@ def fatigue_loss(room_config, viz=False):
                 # 更新缓存
                 cache_fatigue[cache_name]=max_torque
             
-            # print(f'{cache_name}: {max_torque}')
+            print(f'{cache_name}: {max_torque}')
             torque_sum += max_torque
     
     mean_fatigue = torque_sum / len(ingredient_configs)      
