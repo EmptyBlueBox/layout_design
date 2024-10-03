@@ -2,6 +2,8 @@
 .vscode
 __pycache__
 build
+test.py
+tempCodeRunnerFile.py
 
 *.mp4
 *.png

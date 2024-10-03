@@ -24,7 +24,6 @@ import cma
 sys.path.append("/Users/emptyblue/Documents/Research/FLEX/")
 
 # Hyperparameters
-NOW_TYPE = 'bad'
 ROOM_RESOLUTION = 1  # 1m
 weight_bbox = 100
 weight_fatigue = 1
@@ -110,35 +109,6 @@ def write_init_scene_human(room_config=room_config_all):
         ),
     )
 
-    # Add xz coordinate grid with 1 meter step
-    x_ticks = np.arange(room_min[0], room_max[0] + 1, 1)
-    z_ticks = np.arange(room_min[2], room_max[2] + 1, 1)
-    xz_grid_points = np.array([[x, room_min[1], z] for x in x_ticks for z in z_ticks])
-    rr.log(
-        "xz_grid",
-        rr.Points3D(
-            positions=xz_grid_points
-        ),
-    )
-    
-    for i in range(room_max[0]+1):
-        rr.log(
-            f"x_grid_{i}",
-            rr.Points3D(
-                positions=[i,0,0],
-                labels=[f'x_{i}'],
-            ),
-        )
-        
-    for i in range(room_max[2]+1):
-        rr.log(
-            f"z_grid_{i}",
-            rr.Points3D(
-                positions=[0,0,i],
-                labels=[f'z_{i}'],
-            ),
-        )
-
     # write fixtures
     fixtures = room_config["fixture"]
     for fixture_name, fixture_configs in fixtures.items():
@@ -168,7 +138,7 @@ def write_init_scene_human(room_config=room_config_all):
             receptacles_path = os.path.join(
                 config.SELECTED_ASSETS_PATH, "receptacles.npz"
             )
-            # np.savez(receptacles_path, **receptacles)
+            np.savez(receptacles_path, **receptacles)
 
         # write rerun
         for idx, fixture_config in enumerate(fixture_configs):
@@ -237,12 +207,6 @@ def write_init_scene_human(room_config=room_config_all):
     dset_info = {}
 
     # write ingredients and human
-    motion_matching_human_params = {
-        "transl": [np.array([5,1.3,3]),0,0,0,0,0,0,0,0],
-        "global_orient": [np.array([0,1.57,0]),0,0,0,0,0,0,0,0],
-        "body_pose": [static_human_params_poses,0,0,0,0,0,0,0,0],
-    }
-    
     ingredients = room_config["ingredient"]
     for obj_name, obj_configs in ingredients.items():
         for idx, obj_config in enumerate(obj_configs):  # idx: 这个物体出现的第几次
@@ -380,153 +344,110 @@ def write_init_scene_human(room_config=room_config_all):
                     global_orient=torch.tensor(human_orientation, dtype=torch.float32),
                     transl=torch.tensor(human_translation, dtype=torch.float32),
                 )
-                # output = human_model(
-                #     body_pose=torch.tensor(human_pose, dtype=torch.float32),
-                #     global_orient=torch.tensor((R_z_2_y_up*R.from_rotvec(human_orientation)).as_rotvec().reshape(1,3), dtype=torch.float32),
-                #     transl=torch.tensor(R_z_2_y_up.apply(human_translation - np.array([0, 0, fixture_half_size[1]]))+np.array(fixture_translation), dtype=torch.float32),
-                # )
 
-                # vertices = output.vertices.detach().cpu().numpy()[0]
-
-                # vertices = R_z_2_y_up.apply(
-                #     vertices - np.array([0, 0, fixture_half_size[1]])
-                # ) + np.array(fixture_translation)
-                
-                real_root_pos=output.joints.detach().cpu().numpy()[0][0]
-                # print(f'diff: {real_root_pos-human_translation}') # 居然不一样??????
-                
-                
-                new_human_orientation=(R_z_2_y_up*R.from_rotvec(human_orientation)).as_rotvec().reshape(1,3)
-                
-                y_offset=0.36
-                new_human_translation=(R_z_2_y_up.apply(real_root_pos-np.array([0,0,fixture_half_size[1]]))+np.array(fixture_translation)+np.array([0,y_offset,0])).reshape(1,3)
-                human_translation=(R_z_2_y_up.apply(human_translation-np.array([0,0,fixture_half_size[1]]))+np.array(fixture_translation)+np.array([0,y_offset,0])).reshape(1,3)
-                
-                output = human_model(
-                    body_pose=torch.tensor(human_pose, dtype=torch.float32),
-                    global_orient=torch.tensor(new_human_orientation, dtype=torch.float32),  # 用来motion matching的
-                    transl=torch.tensor(new_human_translation, dtype=torch.float32), # 用来motion matching的
-                )
-                
-                motion_matching_human_params["transl"][color_idx+1]=new_human_translation.flatten()
-                motion_matching_human_params["global_orient"][color_idx+1]=new_human_orientation.flatten()
-                motion_matching_human_params["body_pose"][color_idx+1]=human_pose.flatten()
-                
                 vertices = output.vertices.detach().cpu().numpy()[0]
-                # print(f'y_offset: {np.min(vertices[:,1])}')
+
+                vertices = R_z_2_y_up.apply(
+                    vertices - np.array([0, 0, fixture_half_size[1]])
+                ) + np.array(fixture_translation)
                 faces = human_model.faces
 
                 if way_points == []:# 红色到蓝色的人
                     color=start_color*(4-idx)/4+end_color*idx/4
                 else:
-                    print(f'color_idx: {color_idx}')
+                    # print(f'color_idx: {color_idx}')
                     color=start_color*(7-color_idx)/7+end_color*color_idx/7
-
                 # write human rerun
                 if way_points != []:
-                    rr.set_time_seconds("stable_time", (color_idx+1)*frame_time)
-                    # rr.log(
-                    # "human",
-                    # rr.Mesh3D(
-                    #     vertex_positions=vertices,
-                    #     triangle_indices=faces,
-                    #     vertex_colors=np.ones_like(vertices) * color,
-                    #     vertex_normals=compute_vertex_normals(vertices, faces),
-                    # ),
-                    # ) 
-                    # rr.log(
-                    # "human_root",
-                    # rr.Points3D(
-                    #     positions=human_translation,
-                    #     colors=np.ones_like(human_translation) * color,
-                    # ),
-                    # )                   
-                    # rr.log(
-                    # "new_human_root",
-                    # rr.Points3D(
-                    #     positions=new_human_translation,
-                    #     colors=np.ones_like(new_human_translation) * color,
-                    # ),
-                    # )                   
-                    # # print('test11')
-                    # rr.set_time_seconds("stable_time", (color_idx+2)*frame_time)
-                    # rr.log(
-                    # rr_path + f"human_{idx}",
-                    # rr.Mesh3D(
-                    #     vertex_positions=np.zeros_like(vertices),
-                    #     triangle_indices=faces,
-                    # ),
-                    # ) 
+                    rr.set_time_seconds("stable_time", color_idx*frame_time)
+                    rr.log(
+                    rr_path + f"human_{idx}",
+                    rr.Mesh3D(
+                        vertex_positions=vertices,
+                        triangle_indices=faces,
+                        vertex_colors=np.ones_like(vertices) * color,
+                        vertex_normals=compute_vertex_normals(vertices, faces),
+                    ),
+                    )                    
+                    # print('test11')
+                    rr.set_time_seconds("stable_time", (color_idx+2)*frame_time)
+                    rr.log(
+                    rr_path + f"human_{idx}",
+                    rr.Mesh3D(
+                        vertex_positions=np.zeros_like(vertices),
+                        triangle_indices=faces,
+                    ),
+                    ) 
                     rr.set_time_seconds("stable_time", 0)
-                    # rr.log(
-                    # rr_path + f"human_{idx}",
-                    # rr.Mesh3D(
-                    #     vertex_positions=vertices,
-                    #     triangle_indices=faces,
-                    #     vertex_colors=np.ones_like(vertices) * color,
-                    #     vertex_normals=compute_vertex_normals(vertices, faces),
-                    # ),
-                    # )  
+                    rr.log(
+                    rr_path + f"human_{idx}",
+                    rr.Mesh3D(
+                        vertex_positions=vertices,
+                        triangle_indices=faces,
+                        vertex_colors=np.ones_like(vertices) * color,
+                        vertex_normals=compute_vertex_normals(vertices, faces),
+                    ),
+                    )  
                     # print('test22')
                     if color_idx==0:# 给初始地方也加一个人
                         rr.set_time_seconds("stable_time", 0)
                         tmp_static_vertices=static_vertices+np.array([5, 0, 3])
-                        # rr.log(
-                        # "human",
-                        # rr.Mesh3D(
-                        #     vertex_positions=tmp_static_vertices,
-                        #     triangle_indices=faces,
-                        #     vertex_colors=np.ones_like(tmp_static_vertices) * color,
-                        #     vertex_normals=compute_vertex_normals(tmp_static_vertices, faces),
-                        # ),)
-                        # rr.set_time_seconds("stable_time", frame_time)
-                        # rr.log(
-                        # rr_path + f"human0_{idx}",
-                        # rr.Mesh3D(
-                        #     vertex_positions=np.zeros_like(vertices),
-                        #     triangle_indices=faces,
-                        # ),
-                        # )
+                        rr.log(
+                        rr_path + f"human0_{idx}",
+                        rr.Mesh3D(
+                            vertex_positions=tmp_static_vertices,
+                            triangle_indices=faces,
+                            vertex_colors=np.ones_like(tmp_static_vertices) * color,
+                            vertex_normals=compute_vertex_normals(tmp_static_vertices, faces),
+                        ),)
+                        rr.set_time_seconds("stable_time", frame_time)
+                        rr.log(
+                        rr_path + f"human0_{idx}",
+                        rr.Mesh3D(
+                            vertex_positions=np.zeros_like(vertices),
+                            triangle_indices=faces,
+                        ),
+                        )
                         rr.set_time_seconds("stable_time", 0)
-                    # if color_idx==len(way_points)-1: # 给最后地方也加2个人
-                    #     rr.set_time_seconds("stable_time", color_idx*frame_time)
-                    #     tmp_static_vertices=static_vertices+np.array([5, 0, 3])
-                    #     rr.log(
-                    #     rr_path + f"human_last_worktop_{idx}",
-                    #     rr.Mesh3D(
-                    #         vertex_positions=tmp_static_vertices,
-                    #         triangle_indices=faces,
-                    #         vertex_colors=np.ones_like(tmp_static_vertices) * color,
-                    #         vertex_normals=compute_vertex_normals(tmp_static_vertices, faces),
-                    #     ),)
-                    #     rr.set_time_seconds("stable_time", (color_idx+1)*frame_time)
-                    #     rr.log(
-                    #     rr_path + f"human_last_worktop_{idx}",
-                    #     rr.Mesh3D(
-                    #         vertex_positions=np.zeros_like(vertices),
-                    #         triangle_indices=faces,
-                    #     ),
-                    #     )
+                    if color_idx==len(way_points)-1: # 给最后地方也加2个人
+                        rr.set_time_seconds("stable_time", color_idx*frame_time)
+                        tmp_static_vertices=static_vertices+np.array([5, 0, 3])
+                        rr.log(
+                        rr_path + f"human_last_worktop_{idx}",
+                        rr.Mesh3D(
+                            vertex_positions=tmp_static_vertices,
+                            triangle_indices=faces,
+                            vertex_colors=np.ones_like(tmp_static_vertices) * color,
+                            vertex_normals=compute_vertex_normals(tmp_static_vertices, faces),
+                        ),)
+                        rr.set_time_seconds("stable_time", (color_idx+1)*frame_time)
+                        rr.log(
+                        rr_path + f"human_last_worktop_{idx}",
+                        rr.Mesh3D(
+                            vertex_positions=np.zeros_like(vertices),
+                            triangle_indices=faces,
+                        ),
+                        )
                         
-                    #     rr.set_time_seconds("stable_time", color_idx*frame_time)
-                    #     tmp_R=R.from_euler('xyz', [0, 180, 0], degrees=True)
-                    #     tmp_static_vertices=tmp_R.apply(static_vertices)+np.array(room_config_all['fixture']['table'][0]['translation'])+np.array([0.7,0,0])
-                    #     rr.log(
-                    #     rr_path + f"human_last_table_{idx}",
-                    #     rr.Mesh3D(
-                    #         vertex_positions=tmp_static_vertices,
-                    #         triangle_indices=faces,
-                    #         vertex_colors=np.ones_like(tmp_static_vertices) * color,
-                    #         vertex_normals=compute_vertex_normals(tmp_static_vertices, faces),
-                    #     ),)
-                    #     rr.set_time_seconds("stable_time", (color_idx+1)*frame_time)
-                    #     rr.log(
-                    #     rr_path + f"human_last_table_{idx}",
-                    #     rr.Mesh3D(
-                    #         vertex_positions=np.zeros_like(vertices),
-                    #         triangle_indices=faces,
-                    #     ),
-                    #     )
+                        rr.set_time_seconds("stable_time", color_idx*frame_time)
+                        tmp_R=R.from_euler('xyz', [0, 180, 0], degrees=True)
+                        tmp_static_vertices=tmp_R.apply(static_vertices)+np.array(room_config_all['fixture']['table'][0]['translation'])+np.array([0.7,0,0])
+                        rr.log(
+                        rr_path + f"human_last_table_{idx}",
+                        rr.Mesh3D(
+                            vertex_positions=tmp_static_vertices,
+                            triangle_indices=faces,
+                            vertex_colors=np.ones_like(tmp_static_vertices) * color,
+                            vertex_normals=compute_vertex_normals(tmp_static_vertices, faces),
+                        ),)
+                        rr.set_time_seconds("stable_time", (color_idx+1)*frame_time)
+                        rr.log(
+                        rr_path + f"human_last_table_{idx}",
+                        rr.Mesh3D(
+                            vertex_positions=np.zeros_like(vertices),
+                            triangle_indices=faces,
+                        ),
+                        )
                 else:
                     rr.log(
                         rr_path + f"human_{idx}",
@@ -542,10 +463,7 @@ def write_init_scene_human(room_config=room_config_all):
 
     # 保存物体与架子的关系
     relationships_path = os.path.join(config.SELECTED_ASSETS_PATH, "dset_info.npz")
-    # np.savez(relationships_path, **dset_info)
-    
-    from viz_motion_matching import viz_motion_matching
-    viz_motion_matching(motion_matching_human_params=motion_matching_human_params, type=NOW_TYPE) # 输出motion matching结果
+    np.savez(relationships_path, **dset_info)
 
 
 def bbox_loss(room_config, viz=False):
@@ -752,61 +670,61 @@ def distance_loss(room_config, viz=False):
         
         if viz:
             time_idx=len(motion_idx_chosen)
-            # rr.set_time_seconds("stable_time", time_idx*frame_time)
-            # rr.log(
-            #     f"path/{need_ingredient}",
-            #     rr.Arrows3D(
-            #         origins=[now[0], 1, now[1]],
-            #         vectors=[vector_to_shelf[0]/2, 0, vector_to_shelf[1]/2],
-            #         colors=start_color*(7-time_idx)/7+end_color*time_idx/7,
-            #         radii=0.1,
-            #     ),
-            # )
-            # rr.set_time_seconds("stable_time", (time_idx+1)*frame_time)
-            # rr.log(
-            #     f"path/{need_ingredient}",
-            #     rr.Arrows3D(
-            #         origins=[now[0], 0.5, now[1]],
-            #         vectors=[0,0,0],
-            #     ),
-            # )
-            # rr.set_time_seconds(timeline="stable_time", seconds=0)
-            # if time_idx == 7: # 画出回到 [5,3] 和 np.array(room_config_all['fixture']['table'][0]['translation'])-np.array([1,0,0]) 的箭头
-            #     rr.set_time_seconds("stable_time", 7*frame_time)
-            #     rr.log(
-            #         f"path/top_{need_ingredient}",
-            #         rr.Arrows3D(
-            #             origins=[now[0]+vector_to_shelf[0], 1, now[1]+vector_to_shelf[1]],
-            #             vectors=np.array([5-now[0]-vector_to_shelf[0], 0, 3-now[1]-vector_to_shelf[1]])*2/3,
-            #             colors=start_color*(7-time_idx)/7+end_color*time_idx/7,
-            #             radii=0.1,
-            #         ),
-            #     )
-            #     rr.log(
-            #         f"path/table_{need_ingredient}",
-            #         rr.Arrows3D(
-            #             origins=[5, 1, 3],
-            #             vectors=(np.array(room_config_all['fixture']['table'][0]['translation'])+np.array([1,0,0])-np.array([5,0,3]))*2/3,
-            #             colors=start_color*(7-time_idx)/7+end_color*time_idx/7,
-            #             radii=0.1,
-            #         ),
-            #     )
-            #     rr.set_time_seconds("stable_time", 8*frame_time)
-            #     rr.log(
-            #         f"path/top_{need_ingredient}",
-            #         rr.Arrows3D(
-            #             origins=[5, 1, 3],
-            #             vectors=[0,0,0],
-            #         ),
-            #     )
-            #     rr.log(
-            #         f"path/table_{need_ingredient}",
-            #         rr.Arrows3D(
-            #             origins=[5, 1, 3],
-            #             vectors=[0,0,0],
-            #         ),
-            #     )
-            #     rr.set_time_seconds(timeline="stable_time", seconds=0)
+            rr.set_time_seconds("stable_time", time_idx*frame_time)
+            rr.log(
+                f"path/{need_ingredient}",
+                rr.Arrows3D(
+                    origins=[now[0], 1, now[1]],
+                    vectors=[vector_to_shelf[0]/2, 0, vector_to_shelf[1]/2],
+                    colors=start_color*(7-time_idx)/7+end_color*time_idx/7,
+                    radii=0.1,
+                ),
+            )
+            rr.set_time_seconds("stable_time", (time_idx+1)*frame_time)
+            rr.log(
+                f"path/{need_ingredient}",
+                rr.Arrows3D(
+                    origins=[now[0], 0.5, now[1]],
+                    vectors=[0,0,0],
+                ),
+            )
+            rr.set_time_seconds(timeline="stable_time", seconds=0)
+            if time_idx == 7: # 画出回到 [5,3] 和 np.array(room_config_all['fixture']['table'][0]['translation'])-np.array([1,0,0]) 的箭头
+                rr.set_time_seconds("stable_time", 7*frame_time)
+                rr.log(
+                    f"path/top_{need_ingredient}",
+                    rr.Arrows3D(
+                        origins=[now[0]+vector_to_shelf[0], 1, now[1]+vector_to_shelf[1]],
+                        vectors=np.array([5-now[0]-vector_to_shelf[0], 0, 3-now[1]-vector_to_shelf[1]])*2/3,
+                        colors=start_color*(7-time_idx)/7+end_color*time_idx/7,
+                        radii=0.1,
+                    ),
+                )
+                rr.log(
+                    f"path/table_{need_ingredient}",
+                    rr.Arrows3D(
+                        origins=[5, 1, 3],
+                        vectors=(np.array(room_config_all['fixture']['table'][0]['translation'])+np.array([1,0,0])-np.array([5,0,3]))*2/3,
+                        colors=start_color*(7-time_idx)/7+end_color*time_idx/7,
+                        radii=0.1,
+                    ),
+                )
+                rr.set_time_seconds("stable_time", 8*frame_time)
+                rr.log(
+                    f"path/top_{need_ingredient}",
+                    rr.Arrows3D(
+                        origins=[5, 1, 3],
+                        vectors=[0,0,0],
+                    ),
+                )
+                rr.log(
+                    f"path/table_{need_ingredient}",
+                    rr.Arrows3D(
+                        origins=[5, 1, 3],
+                        vectors=[0,0,0],
+                    ),
+                )
+                rr.set_time_seconds(timeline="stable_time", seconds=0)
         # print(f'{next_shelf_hash}_{need_ingredient}')
         # 下一个架子的所有motion方向
         candidate_ingredients=np.array(shelf_ingredients_direction[f'{next_shelf_hash}_{need_ingredient}'])
@@ -1005,10 +923,7 @@ def generate_one_room_config(params):
 
   
 def main():
-    
-    global NOW_TYPE
-    NOW_TYPE = 'bad'
-    
+        
     room_config_all['fixture']['table'][0]['translation'][0]=3
     
     bad_scene=[1,1,1,4,2,2, # 一个很差的初始化场景
@@ -1018,8 +933,6 @@ def main():
     set_up_rerun('bad')
     loss_func(bad_scene, viz=True)
     write_init_scene_human(bad_scene)
-    
-    NOW_TYPE = 'good'
     
     room_config_all['fixture']['fridge_base'][0]['translation'][2]=0
     room_config_all['fixture']['worktop'][0]['translation'][2]=8

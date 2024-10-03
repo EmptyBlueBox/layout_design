@@ -381,6 +381,42 @@ def farthest_point_sampling(points, num_samples):
         sampled_points = sampled_points[0]
     return sampled_points
 
+def z_up_to_y_up_translation(translation):
+    """
+    The function `z_up_to_y_up` performs a transformation on a given translation to
+    switch the z-axis and y-axis directions.
+    
+    Arguments:
+    
+    * `translation`: [N, 3] ndarray, representing translations
+    
+    Returns:
+
+    * `translation`: [N, 3] ndarray, representing translations
+    """
+
+    translation=translation[:, [0, 2, 1]]*np.array([1, 1, -1])
+    return translation
+
+
+def z_up_to_y_up_rotation(orientation):
+    """
+    The function `z_up_to_y_up` performs a transformation on a given orientation to
+    switch the z-axis and y-axis directions.
+    
+    Arguments:
+    
+    * `orientation`: [N, 3] ndarray, representing rotations in rotvec form, with z-up direction
+    
+    Returns:
+    
+    * `orientation`: [N, 3] ndarray, representing rotations in rotvec form, with y-up direction
+    """
+    R_original = R.from_rotvec(orientation)
+    R_z_up_to_y_up = R.from_euler('XYZ', [-np.pi/2, 0, 0], degrees=False)
+    orientation = R_z_up_to_y_up*R_original
+    orientation = orientation.as_rotvec()
+    return orientation
 
 def main():
     # 测试 sdf_grid 是否正确生成
